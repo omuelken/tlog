@@ -175,6 +175,12 @@ const API = {
     });
   },
   Attachments: async () => [],
+  OpenURL: async (rel, url) => {
+    opened.push("OpenURL " + rel + " " + url);
+    return url.endsWith(".md") ? { name: "Regeln.md", path: "/home/ada/notes/assets/Regeln.md",
+                                   lang: "markdown", text: "# Regeln\nNote < 4" } : null;
+  },
+  OpenOutside: async (p) => { opened.push("OpenOutside " + p); },
 };
 
 let failures = 0;
@@ -565,6 +571,26 @@ function ok(label, cond, detail) {
   await new Promise((r) => setTimeout(r, 150));
   ok("back returns to the journals page", $("title").textContent === "Journals",
     $("title").textContent);
+
+  // A link to a text file opens it over the page; esc puts it away again.
+  // From today's page, which is the note the link below is written in.
+  await w.eval("openToday()");
+  await new Promise((r) => setTimeout(r, 150));
+  ok("the file sheet is not covering the page", !shown("file"));
+  const a = w.document.createElement("span");
+  a.dataset.url = "../assets/Regeln.md";
+  w.document.body.appendChild(a);
+  a.dispatchEvent(new w.MouseEvent("mousedown", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 50));
+  ok("following a link asks with the note it is written in",
+    opened.some((o) => /^OpenURL (journals|pages)\/\S.*\.md \.\.\/assets\/Regeln\.md$/.test(o)), opened.join(", "));
+  ok("a text file is shown", shown("file") && $("filetext").textContent.includes("Note < 4"));
+  ok("its headings stand out", $("filetext").querySelector("strong") !== null);
+  $("fileoutside").click();
+  await new Promise((r) => setTimeout(r, 50));
+  ok("open outside hands it over", opened.includes("OpenOutside /home/ada/notes/assets/Regeln.md"));
+  w.document.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  ok("esc puts it away", !shown("file"));
 
   console.log(failures === 0 ? "frontend smoke: all pass" : `frontend smoke: ${failures} FAILURES`);
   process.exit(failures ? 1 : 0);
