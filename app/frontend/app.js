@@ -1439,9 +1439,55 @@ const KEYS = [
   { key: "/", mod: true, label: "Keyboard shortcuts", run: toggleHelp },
   { key: "m", mod: true, shift: true, label: "Messages", run: openLog },
   { key: "p", mod: true, label: "Go to a page", run: () => openPalette() },
+  { key: "\\", mod: true, label: "Toggle sidebar", run: toggleSidebar },
 ];
 
+// --- the sidebar ------------------------------------------------------------
+//
+// Two states, because they mean different things. Collapsed is a choice, made
+// in a wide window and remembered. Open is a visit, made in a narrow one where
+// the sidebar covers the page, and it ends as soon as you have picked
+// something. The stylesheet does the hiding; this only moves the classes.
+
+const NARROW = window.matchMedia("(max-width: 720px)");
+const rootClass = document.documentElement.classList;
+
+function sidebarOpen() {
+  return NARROW.matches && rootClass.contains("sidebar-open");
+}
+
+function closeSidebar() {
+  rootClass.remove("sidebar-open");
+}
+
+function toggleSidebar() {
+  if (NARROW.matches) {
+    rootClass.toggle("sidebar-open");
+    return;
+  }
+  const collapsed = rootClass.toggle("sidebar-collapsed");
+  try {
+    localStorage.setItem("sidebar", collapsed ? "collapsed" : "shown");
+  } catch (_) {}
+}
+
+$("sidebartoggle").onclick = toggleSidebar;
+
+// A visit ends at the first place chosen, or at a click anywhere else.
+$("sidebar").addEventListener("click", (e) => {
+  if (sidebarOpen() && e.target.closest("li, .navitem, .hit, #gear")) closeSidebar();
+});
+document.addEventListener("mousedown", (e) => {
+  if (sidebarOpen() && !e.target.closest("#sidebar, #sidebartoggle")) closeSidebar();
+});
+// Widening the window past the line puts it back beside the page, where an
+// open visit means nothing.
+NARROW.addEventListener("change", closeSidebar);
+
 function focusSearch() {
+  // The box lives in the sidebar, so a hidden sidebar has to come back first.
+  if (NARROW.matches) rootClass.add("sidebar-open");
+  else if (rootClass.contains("sidebar-collapsed")) toggleSidebar();
   $("search").focus();
   $("search").select();
 }
@@ -1453,6 +1499,7 @@ document.addEventListener("keydown", (e) => {
     if (!$("log").hidden) return void ($("log").hidden = true);
     if (!$("help").hidden) return void ($("help").hidden = true);
     if (!$("settings").hidden) return void ($("settings").hidden = true);
+    if (sidebarOpen()) return void closeSidebar();
     if (!$("agenda").hidden && page) return void show(page);
     return;
   }
@@ -1671,7 +1718,25 @@ if (window.runtime && window.runtime.EventsOn) {
 
 $("agendabtn").onclick = () => openAgenda();
 
+// Omarchy's palette, when there is one, replaces the stylesheet's own. The
+// window asks again whenever it regains focus, so a theme switch shows without a
+// restart. Where there is no Omarchy the call comes back empty and nothing moves.
+async function applyTheme() {
+  let theme;
+  try {
+    theme = await api().Theme();
+  } catch (_) {
+    return;
+  }
+  if (!theme) return;
+  for (const [name, value] of Object.entries(theme)) {
+    document.documentElement.style.setProperty(name, value);
+  }
+}
+window.addEventListener("focus", applyTheme);
+
 (async function start() {
+  await applyTheme();
   const root = await call(() => api().Root());
   if (root) $("rootpath").textContent = root;
   await refreshIndex();
