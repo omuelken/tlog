@@ -232,3 +232,26 @@ func TestSlashFileCanPickAnyFileOnTheShelf(t *testing.T) {
 		t.Fatalf("picking the second file did nothing: %q", got)
 	}
 }
+
+func TestATagInALinkIsShownOnHover(t *testing.T) {
+	m := treeModel(t, "- met [[Max Muster #Person]] today\n\n- below\n")
+	send(t, m, k(tea.KeyDown))
+	frame := stripANSI(m.View())
+	if !strings.Contains(frame, "met [[Max Muster]] today") || strings.Contains(frame, "#Person") {
+		t.Fatalf("the tag is still drawn:\n%s", frame)
+	}
+	m.Update(hoverAt(10, 1)) // inside [[Max Muster]]
+	if footer := stripANSI(m.View()); !strings.Contains(footer, "[[Max Muster #Person]]") {
+		t.Fatalf("hovering did not show the tag:\n%s", footer)
+	}
+	// Clicking still goes to Max, not to a page called "Max Muster #Person".
+	m.Update(clickAt(10, 1))
+	if m.doc.Rel != "pages/Max Muster.md" {
+		t.Fatalf("on %q", m.doc.Rel)
+	}
+	// And in the block being edited it is all there, as it is in the file.
+	m.back()
+	if got := m.ed.String(); got != "met [[Max Muster #Person]] today" {
+		t.Fatalf("editing shows %q", got)
+	}
+}

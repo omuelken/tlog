@@ -694,6 +694,32 @@ function wireBlock(el, b) {
   el.addEventListener("keydown", async (e) => {
     if (completion && handleCompletionKey(e, el)) return;
 
+    // Brackets pair, as in the outliner: "[[" closes itself, typing "]" in
+    // front of a "]" steps over it, and backspace inside an empty pair takes
+    // both halves.
+    if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+      const at = caretIndex(el);
+      const text = raw(el);
+      const pair = bracketKey(e.key, text.slice(0, at), text.slice(at));
+      if (pair) {
+        e.preventDefault();
+        if (pair === "close") {
+          document.execCommand("insertText", false, "[]]");
+          moveCaret(-2);
+        } else if (pair === "over") {
+          moveCaret(1);
+        } else {
+          moveCaret(-1);
+          const sel = window.getSelection();
+          sel.modify("extend", "forward", "character");
+          sel.modify("extend", "forward", "character");
+          document.execCommand("delete");
+        }
+        updateCompletion(el);
+        return;
+      }
+    }
+
     // Enter ends this block at the caret and starts the next one with the
     // rest; alt or shift makes a newline inside this one instead.
     //
@@ -848,10 +874,20 @@ function linkPrefix(before) {
   return { kind: "page", prefix: rest };
 }
 
-// The trigger for a date is an @ that starts a word, as in the outliner: "@"
-// alone offers the usual days, "@fr" Friday, "@in 3" three days or weeks.
-// Anything the core cannot make a date of closes the menu, so an address like
-// a@b.ch is just text.
+// bracketKey decides what a key does to brackets: "close" when it is the
+// second [ of a [[ that is not closed yet, "over" when it is a ] in front of a
+// ], "both" when it is backspace inside an empty pair; null otherwise.
+function bracketKey(key, before, after) {
+  if (key === "[" && before.endsWith("[") && !after.startsWith("]]")) return "close";
+  if (key === "]" && after.startsWith("]")) return "over";
+  if (key === "Backspace" && before.endsWith("[") && after.startsWith("]")) return "both";
+  return null;
+}
+
+// The trigger for a mention is an @ that starts a word, as in the outliner:
+// "@" alone offers the people you write about and the usual days, "@jr" Julia
+// Rausenberger, "@fr" Friday. Anything nobody could mean closes the menu, so
+// an address like a@b.ch is just text.
 function atPrefix(before) {
   const i = before.lastIndexOf("@");
   if (i < 0) return null;
@@ -930,12 +966,11 @@ async function updateCompletion(el) {
 
   const at = atPrefix(before);
   if (at) {
-    const dates = await call(() => api().DateChoices(at.prefix));
-    if (dates && dates.length) {
-      const s = completion && completion.kind === "date" ? Math.min(completion.sel, dates.length - 1) : 0;
-      completion = { ...at, dates, items: dates, sel: s, el };
-      completion.cal = await call(() => api().Month(dates[s].iso));
-      return drawCompletion();
+    const mentions = await call(() => api().Mentions(at.prefix));
+    if (mentions && mentions.length) {
+      const s = completion && completion.kind === "mention" ? Math.min(completion.sel, mentions.length - 1) : 0;
+      completion = { kind: "mention", prefix: at.prefix, mentions, items: mentions, sel: s, el };
+      return moveMentionCalendar();
     }
   }
 
@@ -958,6 +993,36 @@ function drawCompletion() {
   const box = $("complete");
   box.innerHTML = "";
 
+  if (completion.mentions) {
+    const list = document.createElement("div");
+    list.className = "cmds mentions";
+    const mark = { person: "@", date: "◷", page: "▤", new: "+" };
+    completion.mentions.forEach((m, i) => {
+      const item = document.createElement("div");
+      item.className = "item kind-" + m.kind + (i === completion.sel ? " sel" : "");
+      const name = m.kind === "new" ? "new person: " + m.name : m.name;
+      item.innerHTML =
+        `<span class="mark">${mark[m.kind] || ""}</span><b>${escapeHTML(name)}</b>` +
+        `<span class="hint${m.state ? " t-" + escapeHTML(m.state) : ""}"> ${escapeHTML(m.detail)}</span>`;
+      item.onmousedown = (e) => {
+        e.preventDefault();
+        completion.sel = i;
+        acceptMention();
+      };
+      list.appendChild(item);
+    });
+    box.appendChild(list);
+    if (completion.cal) {
+      const cal = document.createElement("div");
+      cal.className = "datepick";
+      cal.innerHTML = calendarHTML(completion.cal);
+      box.appendChild(cal);
+    }
+    placeCompletion(box);
+    box.hidden = false;
+    return;
+  }
+
   if (completion.dates) {
     const list = document.createElement("div");
     list.className = "cmds dates";
@@ -970,8 +1035,7 @@ function drawCompletion() {
       item.onmousedown = (e) => {
         e.preventDefault();
         completion.sel = i;
-        if (completion.kind === "cmd") runCommand();
-        else acceptDate();
+        runCommand();
       };
       list.appendChild(item);
     });
@@ -1116,6 +1180,21 @@ function handleCompletionKey(e, el) {
     hideCompletion();
     return true;
   }
+  if (completion.mentions) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const d = e.key === "ArrowDown" ? 1 : -1;
+      completion.sel = Math.max(0, Math.min(completion.sel + d, completion.mentions.length - 1));
+      moveMentionCalendar();
+      return true;
+    }
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      acceptMention();
+      return true;
+    }
+    return false;
+  }
   if (completion.dates) {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
@@ -1126,8 +1205,7 @@ function handleCompletionKey(e, el) {
     }
     if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
-      if (completion.kind === "cmd") runCommand();
-      else acceptDate();
+      runCommand();
       return true;
     }
     return false;
@@ -1181,14 +1259,29 @@ async function moveDateCalendar() {
   drawCompletion();
 }
 
-// acceptDate writes the chosen day as a link to its journal — what /date
-// writes — in place of the @ and whatever was typed after it.
-function acceptDate() {
+// moveMentionCalendar redraws the @ menu, with a calendar when the chosen
+// entry is a day and without one when it is a person or a page.
+async function moveMentionCalendar() {
   const c = completion;
-  const d = c && c.dates && c.dates[c.sel];
+  const m = c.mentions[c.sel];
+  c.cal = null;
+  drawCompletion();
+  if (!m || !m.iso) return;
+  const cal = await call(() => api().Month(m.iso));
+  if (completion !== c || c.mentions[c.sel] !== m) return; // moved on meanwhile
+  c.cal = cal;
+  drawCompletion();
+}
+
+// acceptMention writes the chosen person, day or page as an ordinary link in
+// place of the @ and whatever was typed after it. A new person is written as
+// [[Name #person]], which is what makes them one.
+function acceptMention() {
+  const c = completion;
+  const m = c && c.mentions && c.mentions[c.sel];
   hideCompletion();
-  if (!d) return;
-  replaceBefore(c.prefix.length + 1, "[[" + d.iso + "]]");
+  if (!m) return;
+  replaceBefore(c.prefix.length + 1, m.insert);
 }
 
 // replaceBefore swaps the n characters before the caret for text, as one edit
@@ -1217,9 +1310,22 @@ async function acceptCompletion() {
   }
   const name = completion.items[completion.sel];
   if (!name) return hideCompletion();
-  const closing = completion.kind === "tag" ? "" : "]]";
-  document.execCommand("insertText", false, name.slice(completion.prefix.length) + closing);
+  const el = completion.el;
+  const n = completion.prefix.length;
+  // The match is fuzzy — "jr" finds Julia Rausenberger — so what was typed is
+  // replaced, not extended. And the brackets closed themselves when [[ was
+  // typed, so the caret steps past them rather than adding another pair.
+  const tag = completion.kind === "tag"; // a tag stays inside: another may follow
+  const closed = raw(el).slice(caretIndex(el)).startsWith("]]");
   hideCompletion();
+  replaceBefore(n, name + (tag || closed ? "" : "]]"));
+  if (closed && !tag) moveCaret(2);
+}
+
+// moveCaret moves the caret by characters, backward for a negative count.
+function moveCaret(n) {
+  const sel = window.getSelection();
+  for (let i = 0; i < Math.abs(n); i++) sel.modify("move", n < 0 ? "backward" : "forward", "character");
 }
 
 // runCommand applies the selected command. The core cuts the "/name arg" out of

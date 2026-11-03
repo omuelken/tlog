@@ -571,6 +571,12 @@ func (c *refCursor) skip(r row, line string) {
 func highlightInline(s string, cursor *refCursor) string {
 	s = viewLinkRe.ReplaceAllStringFunc(s, func(match string) string {
 		if !viewAnchorRe.MatchString(match) {
+			// [[Max #person]] says once what Max is; drawn every time, it would
+			// set him apart from every person who was introduced elsewhere.
+			// The link is drawn as [[Max]], and hovering shows all of it.
+			if l := markdown.ParseLinkTarget(match[2 : len(match)-2]); len(l.Tags) > 0 {
+				return styleLink.Render("[[" + l.Page + "]]")
+			}
 			return styleLink.Render(match)
 		}
 		// A block reference shows the block. Showing the page name told the

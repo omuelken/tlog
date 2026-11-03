@@ -70,11 +70,13 @@ func (m *Model) helpParts() []helpPart {
 		key("ctrl+r", "reload after the file was changed elsewhere"),
 		key("F1  ctrl+q", "this page, quit"),
 
-		heading("Linking"),
-		para("Mention a page and it is linked. Everything that mentions a page is listed under it, " +
-			"so going to a person shows every note about them."),
-		key("[[", "link a page: [[Ada Lovelace]]. Completes as you type"),
-		key("[[Ada #person]]", "link Ada and say she is a person; the #person page then lists everyone who is"),
+		heading("Mentioning"),
+		para("Mention someone or something and it is linked. Everything that mentions a page is listed " +
+			"under it, so going to a person shows every note about them."),
+		key("@", "people first — the ones you write about most recently — then days, then pages. "+
+			"@jr finds Julia Rausenberger, @fri Friday. A name nobody has yet makes a new person"),
+		key("[[", "link any page; the ]] closes itself, and the match is fuzzy"),
+		key("[[Ada #person]]", "link Ada and say she is a person, which is all a person is: @ offers her from then on"),
 		key("((", "point at one block anywhere, found by a word in it; it is shown as that block's text"),
 
 		heading("Tasks and dates"),
@@ -82,7 +84,7 @@ func (m *Model) helpParts() []helpPart {
 			"7 nov, 24.12. — and always written down as 2026-11-07, so they sort and mean the same in a year."),
 		key("/todo", "make the block a task; x or ctrl+d ticks it off"),
 		key("/deadline fri", "give it a deadline; the menu offers the usual days before you type"),
-		key("@", "insert a date, picked from the same list, as a link to that day's journal"),
+		key("@fri", "a date in the text, picked from the same list, as a link to that day's journal"),
 		key("a", "everything due, soonest first; tlog todo and tlog due print it in a shell"),
 
 		heading("Links and files"),

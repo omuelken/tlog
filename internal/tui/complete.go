@@ -28,12 +28,14 @@ type completion struct {
 	// a durable name, which is a write to another file, so it is kept here
 	// rather than reduced to a string like the other candidates.
 	refs []tapp.BlockRef
-	// dates is the quick pick for a date: after @, or as the argument of
-	// /date and /deadline. Accepting one writes its ISO form, whatever was
-	// typed to find it.
+	// dates is the quick pick for a date, as the argument of /date and
+	// /deadline. Accepting one writes its ISO form, whatever was typed to
+	// find it.
 	dates []tapp.DateChoice
-	arg   string
-	start int // rune offset where the "/" sits
+	// mentions is the @ menu: people, days and pages, each written as a link.
+	mentions []tapp.Mention
+	arg      string
+	start    int // rune offset where the "/" sits
 	// closing is appended when a candidate is accepted: page names finish the
 	// link, tags do not, because you may want to add another.
 	closing string
@@ -48,7 +50,7 @@ const completionLimit = 8
 // updateCompletion re-evaluates the trigger after every keystroke. The trigger
 // is an unclosed [[ to the left of the cursor.
 func (m *Model) updateCompletion() {
-	if m.slashCompletion() || m.refCompletion() || m.dateCompletion() {
+	if m.slashCompletion() || m.refCompletion() || m.mentionCompletion() {
 		return
 	}
 	prefix, ok := linkPrefix(m.ed.textBefore())
@@ -119,27 +121,45 @@ func (m *Model) refCompletion() bool {
 	return true
 }
 
-// dateCompletion opens the date quick pick when an @ starts a word: "@" alone
-// offers the usual days, "@fr" Friday, "@in 3" three days, weeks or months,
-// "@7 nov" the seventh of November. Accepting one writes the date as a link to
-// that day's journal, exactly what /date writes. When nothing typed after the
-// @ could become a date the menu closes and the @ is just a character, so an
-// address like a@b.ch is never interrupted.
-func (m *Model) dateCompletion() bool {
+// mentionCompletion opens the @ menu when an @ starts a word: the people you
+// write about, then the days the typing could mean, then other pages, and a
+// new person when nobody matches. Whatever is chosen is written as an ordinary
+// link. When nothing could be meant the menu closes and the @ is just a
+// character, so an address like a@b.ch is never interrupted.
+func (m *Model) mentionCompletion() bool {
 	prefix, ok := atPrefix(m.ed.textBefore())
 	if !ok {
 		return false
 	}
-	choices := tapp.DateChoices(prefix, completionLimit)
-	if len(choices) == 0 {
+	l := m.snapshot()
+	if l == nil {
+		return false
+	}
+	found := l.Mentions(prefix, completionLimit)
+	if len(found) == 0 {
 		return false
 	}
 	sel := 0
-	if m.comp != nil && m.comp.dates != nil && m.comp.cmds == nil && m.comp.moved && m.comp.sel < len(choices) {
+	if m.comp != nil && m.comp.mentions != nil && m.comp.moved && m.comp.sel < len(found) {
 		sel = m.comp.sel
 	}
-	m.comp = &completion{active: true, prefix: prefix, items: dateLabels(choices), dates: choices, sel: sel}
+	m.comp = &completion{active: true, prefix: prefix, items: mentionLabels(found), mentions: found, sel: sel, moved: m.comp != nil && m.comp.moved}
 	return true
+}
+
+// mentionLabels marks each entry with what it is, so a person, a day and a
+// page are told apart before a word of them is read.
+func mentionLabels(found []tapp.Mention) []string {
+	items := make([]string, 0, len(found))
+	for _, f := range found {
+		mark := map[string]string{"person": "", "date": "󰃭", "page": "󰈙", "new": "󰐕"}[f.Kind]
+		if f.Kind == "new" {
+			items = append(items, mark+" new person: "+f.Name)
+			continue
+		}
+		items = append(items, fmt.Sprintf("%s %-24s %s", mark, f.Name, styleMuted.Render(f.Detail)))
+	}
+	return items
 }
 
 func dateLabels(choices []tapp.DateChoice) []string {
@@ -165,13 +185,17 @@ func atPrefix(before string) (string, bool) {
 	return string(r[i+1:]), true
 }
 
-func (m *Model) acceptDate() {
-	if m.comp.sel >= len(m.comp.dates) {
+func (m *Model) acceptMention() {
+	if m.comp.sel >= len(m.comp.mentions) {
 		m.comp = nil
 		return
 	}
-	m.ed.replaceBefore(len([]rune(m.comp.prefix))+1, "[["+m.comp.dates[m.comp.sel].ISO+"]]")
+	f := m.comp.mentions[m.comp.sel]
+	m.ed.replaceBefore(len([]rune(m.comp.prefix))+1, f.Insert)
 	m.comp = nil
+	if f.Kind == "new" {
+		m.status = f.Name + " is a person now — their page lists every mention"
+	}
 }
 
 // refPrefix is an unclosed (( to the left of the caret.
@@ -371,8 +395,8 @@ func (m *Model) completionKey(k string) (bool, tea.Cmd) {
 		switch {
 		case m.comp.cmds != nil:
 			m.runCommand()
-		case m.comp.dates != nil:
-			m.acceptDate()
+		case m.comp.mentions != nil:
+			m.acceptMention()
 		case m.comp.refs != nil:
 			m.acceptRef()
 		default:
@@ -389,7 +413,15 @@ func (m *Model) acceptCompletion() {
 		m.comp = nil
 		return
 	}
-	m.ed.replaceBefore(len([]rune(m.comp.prefix)), name+m.comp.closing)
+	closing := m.comp.closing
+	if closing != "" && strings.HasPrefix(m.ed.textAfter(), closing) {
+		// The brackets closed themselves when [[ was typed: step past them
+		// rather than adding another pair.
+		m.ed.replaceBefore(len([]rune(m.comp.prefix)), name)
+		m.ed.cur += len([]rune(closing))
+	} else {
+		m.ed.replaceBefore(len([]rune(m.comp.prefix)), name+closing)
+	}
 	m.comp = nil
 }
 

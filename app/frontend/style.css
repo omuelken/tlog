@@ -872,3 +872,12 @@ table.cal td.sel { background: var(--accent); color: #fff; font-weight: 600; }
   font-size: 11px;
 }
 
+/* The @ menu says what each entry is before a word of it is read. */
+.cmds .mark {
+  display: inline-block;
+  width: 1.3em;
+  color: var(--fg-muted);
+  text-align: center;
+}
+.cmds .kind-person .mark { color: var(--accent); }
+.cmds .kind-new .mark { color: var(--done); }

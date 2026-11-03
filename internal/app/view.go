@@ -437,7 +437,7 @@ func (l *Lookup) Search(query string, limit int) []SearchHit {
 // Pages ranks page names for a [[link]] prefix, including pages that have been
 // linked to but not yet created.
 func (l *Lookup) Pages(prefix string, limit int) []string {
-	return graph.FuzzyRank(l.g.LinkTargets(), prefix, limit)
+	return l.rankPages(prefix, limit)
 }
 
 // Tags ranks the tags in use for a #tag prefix.

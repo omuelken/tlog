@@ -26,13 +26,38 @@ func (e *editor) insert(s string) {
 	e.goalCol = -1
 }
 
+// textAfter is everything from the caret on.
+func (e *editor) textAfter() string { return string(e.runes[e.cur:]) }
+
+// typeRune is typing one character, with brackets made to pair: "[[" closes
+// itself, so a link is typed as [[name and the ]] is already there; typing "]"
+// in front of a "]" steps over it, so typing the closing brackets out of habit
+// does not double them.
+func (e *editor) typeRune(s string) {
+	switch {
+	case s == "]" && strings.HasPrefix(e.textAfter(), "]"):
+		e.right()
+	case s == "[" && strings.HasSuffix(e.textBefore(), "[") && !strings.HasPrefix(e.textAfter(), "]]"):
+		e.insert("[]]")
+		e.cur -= 2
+	default:
+		e.insert(s)
+	}
+}
+
 // backspace deletes the rune before the cursor, reporting false when there is
 // nothing to delete — which the caller turns into "merge with the block above".
 func (e *editor) backspace() bool {
 	if e.cur == 0 {
 		return false
 	}
-	e.runes = append(e.runes[:e.cur-1], e.runes[e.cur:]...)
+	// Inside an empty pair, both halves go: [[|]] backs out to [|] and then to
+	// nothing, rather than leaving a stray ]] behind.
+	if e.runes[e.cur-1] == '[' && e.cur < len(e.runes) && e.runes[e.cur] == ']' {
+		e.runes = append(e.runes[:e.cur-1], e.runes[e.cur+1:]...)
+	} else {
+		e.runes = append(e.runes[:e.cur-1], e.runes[e.cur:]...)
+	}
 	e.cur--
 	e.goalCol = -1
 	return true

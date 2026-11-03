@@ -377,7 +377,9 @@ func (m *Model) save() {
 		m.status = "not pushed: " + sync.LastErr
 	}
 	// Links and tags just changed, and the sections below the outline are
-	// derived from them.
+	// derived from them. So is what completion offers: a person mentioned for
+	// the first time a moment ago is someone to complete now.
+	m.look = nil
 	m.refresh()
 }
 
@@ -762,7 +764,15 @@ func (m *Model) typingKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 	}
 
 	if msg.Type == tea.KeyRunes {
-		m.ed.insert(string(msg.Runes))
+		if msg.Paste {
+			m.ed.insert(string(msg.Runes))
+		} else {
+			// Typed quickly, several characters can arrive as one key; each
+			// is typed on its own so "[[" still closes itself.
+			for _, r := range msg.Runes {
+				m.ed.typeRune(string(r))
+			}
+		}
 		m.updateCompletion()
 		return m, nil
 	}

@@ -42,6 +42,7 @@ eval(lift("function slashAt"));
 eval(lift("function shouldReload"));
 eval(lift("function refPrefix"));
 eval(lift("function atPrefix"));
+eval(lift("function bracketKey"));
 
 let failures = 0;
 function eq(label, got, want) {
@@ -244,6 +245,12 @@ eq("cell contents are still decorated",
 
 // --- the completion trigger -------------------------------------------------
 
+eq("[[ closes itself", bracketKey("[", "see [", ""), "close");
+eq("not when it is already closed", bracketKey("[", "see [", "]]"), null);
+eq("a single [ is just a bracket", bracketKey("[", "see ", ""), null);
+eq("] steps over a ]", bracketKey("]", "[[Ada", "]]"), "over");
+eq("backspace in an empty pair takes both", bracketKey("Backspace", "[[", "]]"), "both");
+eq("backspace elsewhere is backspace", bracketKey("Backspace", "[[Ada", "]]"), null);
 eq("an @ starts a date", atPrefix("call the printer @fr"), { kind: "date", prefix: "fr" });
 eq("an @ alone offers the days", atPrefix("@"), { kind: "date", prefix: "" });
 eq("a date of several words", atPrefix("send it @in 3"), { kind: "date", prefix: "in 3" });

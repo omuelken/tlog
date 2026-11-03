@@ -636,11 +636,16 @@ func TestTagCompletionInsideBrackets(t *testing.T) {
 	}
 
 	send(t, m, k(tea.KeyTab))
-	// A tag is not closed off: you may want a second one.
-	if got := m.ed.String(); got != "[[Ada #person" {
-		t.Fatalf("accepted tag: %q", got)
+	// A tag is not closed off: the caret stays inside the brackets, which
+	// closed themselves when [[ was typed, so a second tag can follow.
+	if got := m.ed.String(); got != "[[Ada #person]]" || m.ed.cur != len("[[Ada #person") {
+		t.Fatalf("accepted tag: %q, caret %d", got, m.ed.cur)
 	}
+	// Typing the closing brackets out of habit steps over them.
 	typeText(t, m, "]]")
+	if got := m.ed.String(); got != "[[Ada #person]]" || m.ed.cur != len(got) {
+		t.Fatalf("after ]]: %q, caret %d", got, m.ed.cur)
+	}
 	send(t, m, k(tea.KeyEsc))
 }
 
@@ -1723,14 +1728,14 @@ func TestSingleLettersGoPlaces(t *testing.T) {
 // --- dates ----------------------------------------------------------------------
 
 func TestAtOffersDaysAndWritesTheDate(t *testing.T) {
-	m := newModel(t)
+	m := newModel(t) // nobody in the notes yet, so the days come first
 	typeText(t, m, "call the printer @")
-	if m.comp == nil || m.comp.dates == nil || m.comp.dates[0].Phrase != "today" {
+	if m.comp == nil || len(m.comp.mentions) == 0 || m.comp.mentions[0].Name != "today" {
 		t.Fatalf("@ did not offer the usual days: %+v", m.comp)
 	}
 	typeText(t, m, "in 3")
-	if len(m.comp.dates) != 3 || m.comp.dates[0].Phrase != "in 3 days" {
-		t.Fatalf("@in 3 offered %+v", m.comp.dates)
+	if len(m.comp.mentions) != 3 || m.comp.mentions[0].Name != "in 3 days" {
+		t.Fatalf("@in 3 offered %+v", m.comp.mentions)
 	}
 	send(t, m, k(tea.KeyEnter))
 	want := "[[" + time.Now().AddDate(0, 0, 3).Format("2006-01-02") + "]]"
@@ -1805,5 +1810,87 @@ func TestWrapWordsBreaksWhatDoesNotFit(t *testing.T) {
 	}
 	if strings.Join(got, "") != strings.ReplaceAll("in /a/very/long/path/that/does/not/fit, committed", " ", "") {
 		t.Fatalf("something was lost: %q", got)
+	}
+}
+
+// --- mentioning people -------------------------------------------------------
+
+func TestAtFindsAPersonByFirstNameOrInitials(t *testing.T) {
+	m := newModel(t)
+	if err := m.svc.Store.Write("pages/Julia Rausenberger.md", []byte("---\ntags: Person\n---\n\n- x\n"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.load(m.doc.Rel); err != nil {
+		t.Fatal(err)
+	}
+	typeText(t, m, "lunch with @jr")
+	if m.comp == nil || len(m.comp.mentions) == 0 || m.comp.mentions[0].Name != "Julia Rausenberger" {
+		t.Fatalf("@jr offered %+v", m.comp)
+	}
+	send(t, m, k(tea.KeyEnter))
+	if got := m.ed.String(); got != "lunch with [[Julia Rausenberger]]" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestAtMakesANewPersonAndRemembersThem(t *testing.T) {
+	m := newModel(t)
+	typeText(t, m, "met @Maria Muster")
+	last := m.comp.mentions[len(m.comp.mentions)-1]
+	if last.Kind != "new" {
+		t.Fatalf("no new person offered: %+v", m.comp.mentions)
+	}
+	m.comp.sel = len(m.comp.mentions) - 1
+	send(t, m, k(tea.KeyEnter), k(tea.KeyEnter)) // accept, then a new block
+	// The next @ already knows her: the save dropped the old snapshot.
+	typeText(t, m, "@mar")
+	if m.comp == nil || len(m.comp.mentions) == 0 || m.comp.mentions[0].Name != "Maria Muster" || m.comp.mentions[0].Kind != "person" {
+		t.Fatalf("the new person was not offered next time: %+v", m.comp)
+	}
+	send(t, m, k(tea.KeyEsc), k(tea.KeyEsc))
+	if got := onDisk(t, m); !strings.HasPrefix(got, "- met [[Maria Muster #person]]\n") {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestDoubleBracketClosesItself(t *testing.T) {
+	m := newModel(t)
+	if _, err := m.svc.AddToPage("Project Foo", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.load(m.doc.Rel); err != nil {
+		t.Fatal(err)
+	}
+	typeText(t, m, "see [[")
+	if got := m.ed.String(); got != "see [[]]" || m.ed.cur != len("see [[") {
+		t.Fatalf("[[ did not close itself: %q caret %d", got, m.ed.cur)
+	}
+	typeText(t, m, "proj")
+	send(t, m, k(tea.KeyEnter)) // accept the completion: no second ]]
+	typeText(t, m, " now")
+	if got := m.ed.String(); got != "see [[Project Foo]] now" {
+		t.Fatalf("got %q", got)
+	}
+
+	// Backspace inside an empty pair takes both halves.
+	m2 := newModel(t)
+	typeText(t, m2, "x [[")
+	send(t, m2, k(tea.KeyBackspace), k(tea.KeyBackspace))
+	if got := m2.ed.String(); got != "x " {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestBracketsPairEvenWhenTypedFast(t *testing.T) {
+	m := newModel(t)
+	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("see [[")})
+	if got := m.ed.String(); got != "see [[]]" {
+		t.Fatalf("got %q", got)
+	}
+	// A paste is taken as it is.
+	m2 := newModel(t)
+	send(t, m2, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("[[x"), Paste: true})
+	if got := m2.ed.String(); got != "[[x" {
+		t.Fatalf("a paste was changed: %q", got)
 	}
 }

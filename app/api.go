@@ -246,6 +246,17 @@ func (a *API) DatePreview(arg string) DatePreview {
 // /deadline.
 func (a *API) DateChoices(input string) []tapp.DateChoice { return tapp.DateChoices(input, 8) }
 
+// Mentions is the @ menu: the people you write about, the days the typing
+// could mean, other pages, and a new person when nobody matches — the same
+// list the outliner draws.
+func (a *API) Mentions(query string) ([]tapp.Mention, error) {
+	l, err := a.svc.Lookup()
+	if err != nil {
+		return nil, err
+	}
+	return l.Mentions(query, 8), nil
+}
+
 // Calendar is a month laid out for drawing, Monday first.
 type Calendar struct {
 	Title string   `json:"title"`

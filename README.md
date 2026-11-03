@@ -71,7 +71,8 @@ around with single letters; `enter` picks it back up.
 | `alt+↑` `alt+↓` | move the block and its children |
 | `backspace` | at the start of a block: join it to the one above (an empty one goes) |
 | `↑ ↓ ← →` | move; they run on from one block into the next |
-| `[[` `((` `/` `@` | page · block reference · commands like `/todo` · a date, picked |
+| `@` | mention someone: people you write about first, then days and pages; a new name makes a new person |
+| `[[` `((` `/` | link a page (the `]]` closes itself) · block reference · commands like `/todo` |
 | `esc` | stop writing and move around (saves the block) |
 
 **Moving** — after `esc`. The block is highlighted and letters are commands.

@@ -138,6 +138,25 @@ alt+←/→ as a chord; ctrl+enter and shift+enter arrive as enter. There is no
 setting for the old vim mode; a setting for a decision is a supported way to
 break it.
 
+**People are special in how they are found, not in how they are stored.** Most
+links in these notes are to people, and `[[Julia Rausenberger]]` is a lot to type.
+A syntax of their own (`@Julia`) was considered and refused: names have spaces,
+so an `@name` has no clear end, no other tool would read it as a link, and the
+dialect only grows when nothing standard will do. "Is a person" was already data
+— `tags: Person` on the page, or `[[Ada #person]]` anywhere — so `@` became a
+way in rather than a way to store: one menu of people (ranked by how recently
+and how often you mention them, matched on first names, initials and aliases),
+then days, then pages, writing an ordinary `[[link]]` whichever is chosen. A
+name nobody has yet is offered as a new person and written `[[Name #person]]`,
+so meeting someone and writing them down is one act. Offering a new person is
+held back until the typing looks like a name — capitalised, or with a space —
+so a stray `@here` never becomes somebody.
+
+**`[[` closes itself.** Typing the second `[` adds the `]]`, typing `]` steps
+over one, and backspace in an empty pair removes both. Completion replaces what
+was typed rather than extending it, because the match is fuzzy: `[[jr` finds
+Julia Rausenberger.
+
 **Links are drawn as their label; the mouse is how to see behind one.**
 Ordinary markdown links are not part of the dialect and nothing about how they
 are stored changed. `markdown.URLLinks` only finds them, so the outliner and the
