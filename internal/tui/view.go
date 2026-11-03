@@ -246,7 +246,7 @@ func (m *Model) renderRowHits(r row, selected, editing bool) ([]string, [][]link
 		out[0] += " " + styleMuted.Render("^"+r.block.Anchor)
 	}
 	for _, p := range r.block.Props {
-		if strings.EqualFold(p.Key, tapp.DeadlineProp) {
+		if tapp.IsDeadlineKey(p.Key) {
 			continue // shown beside the text instead, with how it stands
 		}
 		out = append(out, indent+"  "+styleProp.Render(p.Key+":: "+p.Value))

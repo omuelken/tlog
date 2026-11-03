@@ -38,6 +38,11 @@ func (e *ErrConflict) Error() string {
 // ErrBadPageName is returned for page names that cannot be filenames.
 var ErrBadPageName = errors.New("invalid page name")
 
+// ErrOutside is returned for a path that would leave the notes directory. The
+// store is the one door to the disk, so every caller is covered by the check
+// here rather than each remembering to make it.
+var ErrOutside = errors.New("outside the notes directory")
+
 // Store is a notes directory.
 type Store struct {
 	Root string
@@ -101,6 +106,17 @@ func Open(dir string) (*Store, error) {
 
 // Abs turns a store-relative path into an absolute one.
 func (s *Store) Abs(rel string) string { return filepath.Join(s.Root, rel) }
+
+// Check refuses a path that is not inside the notes directory: an absolute
+// one, or one that climbs out with "..". Every read and write goes through it.
+func (s *Store) Check(rel string) error {
+	clean := filepath.Clean(rel)
+	if rel == "" || clean == "." || filepath.IsAbs(clean) || clean == ".." ||
+		strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("%s: %w", rel, ErrOutside)
+	}
+	return nil
+}
 
 // JournalRel is the relative path of a day's journal.
 func (s *Store) JournalRel(t time.Time) string {
@@ -201,6 +217,9 @@ type File struct {
 // Read loads a file. A file that does not exist reads as empty, with the hash
 // of emptiness, so that creating and updating are the same code path.
 func (s *Store) Read(rel string) (*File, error) {
+	if err := s.Check(rel); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(s.Abs(rel))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -227,6 +246,9 @@ func (s *Store) Parse(rel string) (*markdown.Document, string, error) {
 // The write itself is a temp file plus a rename, so a crash mid-write leaves
 // either the old file or the new one, never half of either.
 func (s *Store) Write(rel string, data []byte, ifMatch string) error {
+	if err := s.Check(rel); err != nil {
+		return err
+	}
 	abs := s.Abs(rel)
 
 	if ifMatch != "" {

@@ -557,6 +557,46 @@ at the first positional, so `tlog search lecture -json` searched for
 being driven by a script cannot have a trap in it that silently changes the
 query rather than failing.
 
+**An address without a hash is not an address.** `ParseAddr` used to accept
+`journals/X.md:0@`, and `Resolve` skipped the comparison when the hash was
+empty, so a caller could write at an offset with no check at all. Both refuse
+now. The one unchecked write left is `AppendBlock` with an empty `ifMatch`,
+which is explicit in the signature and documented as such.
+
+**The store refuses to leave its root.** `Store.Abs` was a plain join, so
+`tlog view ../out.md` read a file outside the notes and `tlog block
+../out.md:0@<hash>` could have rewritten it. The check lives in `Store.Read`
+and `Store.Write` rather than in each caller, because every read and write
+goes through those two and none of the callers should have to remember.
+
+**A page that is not there is exit 3, by name or by path.** `view Missing`
+exited 1 and `view pages/Missing.md` exited 0 with an empty page. Both go
+through `Service.FindPage` now — a path is a path, a name may be an alias — and
+a page that does not exist is a refusal: it is not a failure and retrying will
+not help, which is what 3 means. The CLI used to hold this resolution itself;
+it is the core's now, so the window can stop creating pages it only meant to
+look at.
+
+**`task` toggles; `open` and `done` do not.** A retrying agent that ran `task`
+twice put the task back. The two explicit operations run the same `/todo` and
+`/done` commands the menus run, through `ApplyCommand`, which is `RunCommand`
+without a typed span to cut out. The bar widget ticks with `done` for the same
+reason.
+
+**Undo for a one-shot command is git.** `Service.Undo` keeps its history in
+memory for a session, which a script never has. `tlog undo [rel]` reverts the
+last commit tlog made to a file (or the last tlog commit at all), and only if
+the file still is as that commit left it — a later change by hand is a conflict,
+exit 4, not something to write over. It writes through the store like any
+other write, so the hash rule and the own-write record hold, and then commits
+the undo. A commit not made by tlog is left to git.
+
+**A note that was saved but not committed is still saved.** When the commit
+or push after a write fails, the write prints exit 0, the new address, and a
+`warning` in its JSON as well as on stderr. Exiting non-zero would tell the
+script its write failed, and it did not; swallowing the message would hide a
+repository that needs looking at.
+
 **`tlog view` creates nothing, while `tlog open` still does.** An agent
 surveying the notes must not leave an empty page behind everywhere it looked.
 Creating on follow is right for a person following a link and wrong for

@@ -17,7 +17,7 @@ click away, coloured by what is most pressing.
 Keys in the panel: ↑↓ or j k choose, space or x tick off, enter open, a add,
 t journal, r refresh, esc close.
 
-It reads with `tlog todo -json` and writes with `tlog block <addr> task` and
+It reads with `tlog todo -json` and writes with `tlog block <addr> done` and
 `tlog add -todo`, so it never parses or writes a note itself; a todo changed
 since it was listed is refused by tlog rather than ticked off by mistake. It
 refreshes whenever today's journal changes on disk, and once a minute.

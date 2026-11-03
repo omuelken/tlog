@@ -45,9 +45,18 @@ func Stale(err error) bool {
 // Result says what a mutation did: the file's new hash, and where the block it
 // touched now starts. Both are needed to address the same block again.
 type Result struct {
-	Rel    string
-	Hash   string
-	Offset int
+	// Addr is the three below as one string, ready to be handed to the next
+	// operation; a caller never assembles it.
+	Addr   Addr   `json:"addr"`
+	Rel    string `json:"rel"`
+	Hash   string `json:"hash"`
+	Offset int    `json:"offset"`
+}
+
+// at fills in the address once the file, hash and offset are known.
+func (r *Result) at() *Result {
+	r.Addr = Addr{Rel: r.Rel, Offset: r.Offset, Hash: r.Hash}
+	return r
 }
 
 // mutate resolves an address, applies a change to the tree, writes the file and
@@ -86,7 +95,7 @@ func (s *Service) commit(d *Doc, b *markdown.Block) (*Result, error) {
 	} else if len(flat) > 0 {
 		res.Offset = flat[len(flat)-1].Start
 	}
-	return res, nil
+	return res.at(), nil
 }
 
 // SetText replaces a block's own text, leaving its children alone.
@@ -197,7 +206,7 @@ func (s *Service) DeleteBlock(a Addr) (*Result, error) {
 		}
 		res.Offset = flat[idx].Start
 	}
-	return res, nil
+	return res.at(), nil
 }
 
 // InsertAfter adds a block below another one.

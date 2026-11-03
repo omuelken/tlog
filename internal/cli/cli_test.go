@@ -238,8 +238,15 @@ func TestConfigShowsAndSets(t *testing.T) {
 	if code, _, errs := runCLI(t, dir, "config", "nope", "x"); code != 2 || !strings.Contains(errs, "no such setting") {
 		t.Fatalf("code=%d stderr=%q", code, errs)
 	}
-	if code, _, errs := runCLI(t, dir, "config", "notes"); code != 2 || !strings.Contains(errs, "give a value") {
+	// One key alone reads it; an unknown one is a usage error.
+	if code, out, _ := runCLI(t, dir, "config", "attachments.sanitize"); code != 0 || strings.TrimSpace(out) != "true" {
+		t.Fatalf("code=%d out=%q", code, out)
+	}
+	if code, _, errs := runCLI(t, dir, "config", "nope"); code != 2 || !strings.Contains(errs, "no such setting") {
 		t.Fatalf("code=%d stderr=%q", code, errs)
+	}
+	if code, out, _ := runCLI(t, dir, "config", "-json"); code != 0 || !strings.Contains(out, `"key": "attachments.sanitize"`) {
+		t.Fatalf("code=%d out=%q", code, out)
 	}
 }
 

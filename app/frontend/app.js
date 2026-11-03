@@ -1620,7 +1620,7 @@ async function runSearch(query) {
   (hits || []).slice(0, 60).forEach((h) => {
     const el = document.createElement("div");
     el.className = "hit";
-    el.innerHTML = `<div class="what">${escapeHTML(h.text || "(empty block)")}</div><div class="where">${escapeHTML(h.page)}</div>`;
+    el.innerHTML = `<div class="what">${escapeHTML(h.firstLine || h.text || "(empty block)")}</div><div class="where">${escapeHTML(h.page)}</div>`;
     el.onclick = () => openRel(h.rel);
     box.appendChild(el);
   });

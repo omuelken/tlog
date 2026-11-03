@@ -96,7 +96,10 @@ type SearchHit struct {
 	Page   string `json:"page"`
 	Offset int    `json:"offset"`
 	Hash   string `json:"hash"`
-	Text   string `json:"text"`
+	// Text is the whole block. FirstLine is for a one-line listing, which
+	// used to be all Text held, cutting a multi-line block off silently.
+	Text      string `json:"text"`
+	FirstLine string `json:"firstLine"`
 }
 
 // Index is the list of everything, for a sidebar or a palette.
@@ -349,7 +352,7 @@ func (s *Service) Due(includeDone bool) ([]DueItem, error) {
 		return nil, err
 	}
 	now := time.Now()
-	var out []DueItem
+	out := []DueItem{}
 	for _, p := range g.Order {
 		p.Doc.Walk(func(b *markdown.Block) bool {
 			due, ok := Deadline(b)
@@ -410,9 +413,15 @@ func (s *Service) Lookup() (*Lookup, error) {
 
 // Index lists journals newest first, then pages, then the tags in use.
 func (l *Lookup) Index() *Index {
-	idx := &Index{Pages: l.g.PageNames(), Tags: l.g.TagNames()}
+	idx := &Index{Journals: []string{}, Pages: l.g.PageNames(), Tags: l.g.TagNames()}
 	for _, p := range l.g.Journals() {
 		idx.Journals = append(idx.Journals, p.Name)
+	}
+	if idx.Pages == nil {
+		idx.Pages = []string{}
+	}
+	if idx.Tags == nil {
+		idx.Tags = []string{}
 	}
 	return idx
 }
@@ -420,15 +429,16 @@ func (l *Lookup) Index() *Index {
 // Search finds blocks matching every term, with addresses safe to mutate
 // through.
 func (l *Lookup) Search(query string, limit int) []SearchHit {
-	var out []SearchHit
+	out := []SearchHit{}
 	for _, h := range l.g.Search(query, limit) {
 		out = append(out, SearchHit{
-			Addr:   Addr{Rel: h.Page.Rel, Offset: h.Offset, Hash: h.Hash},
-			Rel:    h.Page.Rel,
-			Page:   h.Page.Name,
-			Offset: h.Offset,
-			Hash:   h.Hash,
-			Text:   strings.TrimSpace(h.Block.FirstLine()),
+			Addr:      Addr{Rel: h.Page.Rel, Offset: h.Offset, Hash: h.Hash},
+			Rel:       h.Page.Rel,
+			Page:      h.Page.Name,
+			Offset:    h.Offset,
+			Hash:      h.Hash,
+			Text:      strings.TrimSpace(h.Block.Text),
+			FirstLine: strings.TrimSpace(h.Block.FirstLine()),
 		})
 	}
 	return out
@@ -461,7 +471,7 @@ type PlaceView struct {
 // Journals come before pages before tags at equal rank, because a date is the
 // thing most often being looked for and the thing most easily typed exactly.
 func (l *Lookup) Places(query string, limit int) []PlaceView {
-	var out []PlaceView
+	out := []PlaceView{}
 	add := func(kind string, names []string, rel func(string) string) {
 		for _, n := range graph.FuzzyRank(names, query, 0) {
 			out = append(out, PlaceView{Kind: kind, Name: n, Rel: rel(n)})
@@ -533,6 +543,52 @@ func (s *Service) CompleteTags(prefix string, limit int) ([]string, error) {
 		return nil, err
 	}
 	return l.Tags(prefix, limit), nil
+}
+
+// People lists every page tagged as a person, for a caller with no snapshot.
+func (s *Service) People() ([]string, error) {
+	l, err := s.Lookup()
+	if err != nil {
+		return nil, err
+	}
+	people := l.People()
+	if people == nil {
+		people = []string{}
+	}
+	return people, nil
+}
+
+// Mentions is the @ menu for a caller with no snapshot: who or what a few
+// typed letters could mean, so a script writes [[Julia Rausenberger]] rather
+// than a misspelling that makes a new page.
+func (s *Service) Mentions(query string, limit int) ([]Mention, error) {
+	l, err := s.Lookup()
+	if err != nil {
+		return nil, err
+	}
+	out := l.Mentions(query, limit)
+	if out == nil {
+		out = []Mention{}
+	}
+	return out, nil
+}
+
+// Block is one block as the read model has it, found by address. The hash is
+// checked as for a write, so what comes back is what the address meant.
+func (s *Service) Block(a Addr) (*BlockView, error) {
+	if _, _, err := s.Resolve(a); err != nil {
+		return nil, err
+	}
+	v, err := s.View(a.Rel)
+	if err != nil {
+		return nil, err
+	}
+	for i := range v.Blocks {
+		if v.Blocks[i].Offset == a.Offset {
+			return &v.Blocks[i], nil
+		}
+	}
+	return nil, refuse("no block at offset %d in %s", a.Offset, a.Rel)
 }
 
 // firstLine is the first line of a multi-line block, for the one-line-per-row
