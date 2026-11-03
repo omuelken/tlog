@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	tapp "github.com/tilman-schieber/tlog/internal/app"
 )
@@ -1762,5 +1763,47 @@ func TestDeadlineOffersTheSameDays(t *testing.T) {
 	want := "Deadline:: " + time.Now().AddDate(0, 0, 1).Format("2006-01-02")
 	if got := onDisk(t, m); !strings.Contains(got, want) || strings.Contains(got, "/deadline") {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestHelpScrollsAndOnlyClosesWhenAsked(t *testing.T) {
+	m := newModel(t)
+	m.width, m.height = 60, 15
+	send(t, m, k(tea.KeyF1))
+	if m.mode != modeHelp {
+		t.Fatal("F1 did not open the help")
+	}
+	first := stripANSI(m.View())
+	if !strings.Contains(first, m.svc.Store.Root) {
+		t.Fatalf("the help does not say where the notes are:\n%s", first)
+	}
+	for _, line := range strings.Split(first, "\n") {
+		if w := lipgloss.Width(line); w > 60 {
+			t.Fatalf("a line is %d wide in a 60-wide window: %q", w, line)
+		}
+	}
+
+	send(t, m, k(tea.KeyPgDown), runeKey('j'), k(tea.KeyDown))
+	if m.mode != modeHelp {
+		t.Fatal("scrolling closed the help")
+	}
+	if stripANSI(m.View()) == first {
+		t.Fatal("scrolling did not move the page")
+	}
+	send(t, m, k(tea.KeyEsc))
+	if m.mode != modeOutline {
+		t.Fatal("esc did not close the help")
+	}
+}
+
+func TestWrapWordsBreaksWhatDoesNotFit(t *testing.T) {
+	got := wrapWords("in /a/very/long/path/that/does/not/fit, committed", 12)
+	for _, l := range got {
+		if lipgloss.Width(l) > 12 {
+			t.Fatalf("%q is wider than 12: %q", l, got)
+		}
+	}
+	if strings.Join(got, "") != strings.ReplaceAll("in /a/very/long/path/that/does/not/fit, committed", " ", "") {
+		t.Fatalf("something was lost: %q", got)
 	}
 }

@@ -115,6 +115,9 @@ type Model struct {
 	pendingR bool
 	pendingD bool
 
+	// helpTop is how far the help screen is scrolled.
+	helpTop int
+
 	// What the last frame drew, line by line, for the mouse to find things
 	// in: which row each body line belongs to, the line that row starts on,
 	// and where its links are. bodyTop is the first body line on screen.
@@ -451,8 +454,7 @@ func (m *Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case modeLog:
 		return m.logKey(k)
 	case modeHelp:
-		m.mode = modeOutline
-		return m, nil
+		return m.helpKey(k)
 	default:
 		return m.outlineKey(msg, k)
 	}
@@ -1334,7 +1336,7 @@ func (m *Model) commands() []pickItem {
 		cmd("Reload from disk", "ctrl+r · discards what is not saved", (*Model).reload),
 		cmd("Settings", "", (*Model).openSettings),
 		cmd("Messages", "everything tlog has said", (*Model).openLog),
-		cmd("Help", "F1 · every key", func(m *Model) { m.mode = modeHelp }),
+		cmd("Help", "F1 · how tlog works, and every key", func(m *Model) { m.mode = modeHelp }),
 	}
 }
 

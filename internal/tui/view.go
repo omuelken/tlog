@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"net/url"
 	"path"
 	"regexp"
@@ -654,54 +653,6 @@ func (m *Model) pickerView() string {
 		hint = "enter open · a name that matches nothing makes that page · esc cancel"
 	}
 	b.WriteString(styleMuted.Render(hint))
-	return b.String()
-}
-
-func (m *Model) helpView() string {
-	rows := [][2]string{
-		{"", "Writing — where tlog opens. Typing types into the block under the caret."},
-		{"enter", "new block — at the caret, so it splits a block in two"},
-		{"alt+enter", "newline inside a block (also ctrl+j)"},
-		{"tab / shift+tab", "indent · outdent"},
-		{"alt+↑ / alt+↓", "move the block and its children"},
-		{"backspace", "at the start of a block: join it to the one above"},
-		{"↑ ↓ ← →", "move; they run on into the next block"},
-		{"esc", "stop writing and move around"},
-		{"", ""},
-		{"", "Moving — after esc. The block is highlighted and letters are commands."},
-		{"enter / i", "write here"},
-		{"j k / ↑ ↓", "move between blocks"},
-		{"p", "go to: recent pages first, then commands, journals, pages"},
-		{"/", "search every block"},
-		{"t", "today's journal"},
-		{"b", "back to where you came from"},
-		{"g / o", "follow a [[link]], or open a link or file (xdg-open)"},
-		{"[ / ]", "previous · next day"},
-		{"x", "toggle the task checkbox"},
-		{"dd", "delete the block and everything in it"},
-		{"z / h l", "fold · unfold"},
-		{"tab / alt+↑↓", "indent · move the block, as when writing"},
-		{"a", "agenda: everything with a deadline"},
-		{"q", "quit"},
-		{"", ""},
-		{"", "In either: ctrl+p go to · ctrl+f search · ctrl+t today · ctrl+o back ·"},
-		{"", "alt+←→ days · ctrl+g follow · ctrl+d task · ctrl+↑↓ fold · ctrl+r reload"},
-		{"[[  ((  /  @", "while writing: page · block reference · /todo… · a date"},
-		{"", ""},
-		{"mouse", "click a block to write there · click a link to open it ·"},
-		{"", "hover a link to see where it goes · click ▸▾ to fold · wheel moves"},
-		{"drop files", "they go onto the shelf, and their links where you are"},
-		{"shift+drag", "select text in the terminal, as usual with mouse apps"},
-	}
-	var b strings.Builder
-	b.WriteString(styleTitle.Render("tlog") + "\n\n")
-	for _, r := range rows {
-		b.WriteString(fmt.Sprintf("  %-16s %s\n", r[0], styleMuted.Render(r[1])))
-	}
-	b.WriteString("\n  " + styleMuted.Render("Type a page as you mention it: [[Ada #person]], [[engine #project]].") + "\n")
-	b.WriteString("  " + styleMuted.Render("The #person page then lists every person. A tag is just a page.") + "\n")
-	b.WriteString("\n" + styleMuted.Render("  Your notes are plain markdown in "+m.svc.Store.Root+"\n"))
-	b.WriteString(styleMuted.Render("  Every change is committed to git there. Press any key.\n"))
 	return b.String()
 }
 
