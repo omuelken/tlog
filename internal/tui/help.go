@@ -96,7 +96,7 @@ func (m *Model) helpParts() []helpPart {
 		key("/file", "link something already on the shelf"),
 
 		heading("The mouse"),
-		key("click", "a block to write there, a link to open it, ▸ ▾ to fold"),
+		key("click", "a block to write there, a link to open it, ▸ ▾ to fold, ☐ to tick"),
 		key("wheel", "move through the page"),
 		key("shift+drag", "select text, as in any program that uses the mouse"),
 

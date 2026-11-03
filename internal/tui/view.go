@@ -21,6 +21,8 @@ var (
 	viewAnchorRe = regexp.MustCompile(`\[\[[^\[\]]*#\^[^\[\]]+\]\]`)
 	viewTagRe    = regexp.MustCompile(`(^|\s)(#[A-Za-z][A-Za-z0-9_/\-]*)`)
 	viewCheckRe  = regexp.MustCompile(`^\[( |x|X)\] `)
+	// The same rule the window draws headings by: hashes, a space, the text.
+	viewHeadingRe = regexp.MustCompile(`^\s*#{1,6}\s+(.*)$`)
 )
 
 func (m *Model) View() string {
@@ -433,7 +435,28 @@ func (m *Model) highlight(s string, r row) (string, []linkHit) {
 		body, hits := inlineWithLinks(rest, cursor, 2)
 		return styleDone.Render("☑ " + stripANSI(body)), hits
 	}
+	// A markdown heading is drawn as the window draws it: bold, without its
+	// hashes. Nothing about the file changes; the hashes are there while
+	// writing.
+	if h := viewHeadingRe.FindStringSubmatch(s); h != nil {
+		body, hits := inlineWithLinks(h[1], cursor, 0)
+		return boldThroughout(body), hits
+	}
 	return inlineWithLinks(s, cursor, 0)
+}
+
+// boldThroughout makes a line bold although it is already coloured in places:
+// every reset inside it would end the bold, so bold is put back after each.
+// When the terminal takes no styling at all the text comes back as it was.
+func boldThroughout(s string) string { return rebold(styleTitle.Render(s)) }
+
+func rebold(out string) string {
+	const on, off = "\x1b[1m", "\x1b[0m"
+	if !strings.HasPrefix(out, on) || !strings.HasSuffix(out, off) {
+		return out
+	}
+	inner := strings.TrimSuffix(strings.TrimPrefix(out, on), off)
+	return on + strings.ReplaceAll(inner, off, off+on) + off
 }
 
 // linkHit is where a link was drawn: columns on one screen line, and what it

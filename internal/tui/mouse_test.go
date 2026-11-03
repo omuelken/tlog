@@ -255,3 +255,99 @@ func TestATagInALinkIsShownOnHover(t *testing.T) {
 		t.Fatalf("editing shows %q", got)
 	}
 }
+
+func TestADropNobodyBracketedIsStillADrop(t *testing.T) {
+	paths := dropped(t, "plan.png")
+	m := treeModel(t, "- one\n\n- two\n")
+	send(t, m, k(tea.KeyEsc))
+	// A terminal that does not bracket a paste delivers the path as one burst
+	// of runes; typed by hand it would have come one rune at a time.
+	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(paths[0])})
+	got := onDisk(t, m)
+	if !strings.HasPrefix(got, "- one\n\n- ![plan.png](file://") {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestABurstOfLettersIsTypedNotAttached(t *testing.T) {
+	m := newModel(t)
+	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ab")})
+	send(t, m, k(tea.KeyEsc))
+	if got := onDisk(t, m); got != "- ab\n" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestClickingTheBoxTicksATask(t *testing.T) {
+	m := treeModel(t, "- [ ] buy milk\n\n- other\n")
+	send(t, m, k(tea.KeyDown)) // off the task, so its box is drawn rather than raw
+	m.View()
+
+	// Line 1 is the task; "• " is two columns, then the box.
+	m.Update(clickAt(2, 1))
+	if got := onDisk(t, m); !strings.HasPrefix(got, "- [x] buy milk") {
+		t.Fatalf("the click did not tick the task: %q", got)
+	}
+	// A done task is drawn the same shape, so the same click unticks it.
+	m.View()
+	m.Update(clickAt(3, 1))
+	if got := onDisk(t, m); !strings.HasPrefix(got, "- [ ] buy milk") {
+		t.Fatalf("the second click did not untick it: %q", got)
+	}
+
+	// A click on the words is a click to write there, not a tick.
+	m.View()
+	m.Update(clickAt(8, 1))
+	if got := onDisk(t, m); !strings.HasPrefix(got, "- [ ] buy milk") {
+		t.Fatalf("clicking the text changed the task: %q", got)
+	}
+	if m.ed == nil || m.edBlock == nil || m.edBlock.Text != "[ ] buy milk" {
+		t.Fatal("clicking the text did not start writing in the task")
+	}
+}
+
+func TestTheBoxTicksWhileMovingToo(t *testing.T) {
+	m := treeModel(t, "- [ ] buy milk\n")
+	send(t, m, k(tea.KeyEsc))
+	m.View()
+	m.Update(clickAt(2, 1))
+	if got := onDisk(t, m); got != "- [x] buy milk\n" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// --- headings ----------------------------------------------------------------
+
+func TestAHeadingIsDrawnWithoutItsHashesUnlessBeingWritten(t *testing.T) {
+	m := treeModel(t, "- # Plans for [[Alpha]]\n\n- below\n")
+	send(t, m, k(tea.KeyDown))
+	frame := stripANSI(m.View())
+	if strings.Contains(frame, "# Plans") || !strings.Contains(frame, "• Plans for [[Alpha]]") {
+		t.Fatalf("the heading kept its hashes:\n%s", frame)
+	}
+	// Its links are where they are drawn, not where the hashes would have
+	// put them: "• Plans for " is twelve columns, so the link starts there.
+	m.Update(clickAt(12, 1))
+	if m.doc.Rel != "pages/Alpha.md" {
+		t.Fatalf("clicking the link in a heading went to %q", m.doc.Rel)
+	}
+
+	m = treeModel(t, "- # Plans\n")
+	if frame := stripANSI(m.View()); !strings.Contains(frame, "# Plans") {
+		t.Fatalf("while writing, the hashes must be there to edit:\n%s", frame)
+	}
+	if got := onDisk(t, m); got != "- # Plans\n" {
+		t.Fatalf("drawing changed the file: %q", got)
+	}
+}
+
+func TestBoldSurvivesTheColoursInsideAHeading(t *testing.T) {
+	in := "\x1b[1mfoo \x1b[34mbar\x1b[0m baz\x1b[0m"
+	want := "\x1b[1mfoo \x1b[34mbar\x1b[0m\x1b[1m baz\x1b[0m"
+	if got := rebold(in); got != want {
+		t.Fatalf("got %q", got)
+	}
+	if got := rebold("plain"); got != "plain" {
+		t.Fatalf("a terminal without styling gets its text back, got %q", got)
+	}
+}

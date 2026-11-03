@@ -103,10 +103,13 @@ commands in the palette: `p`, then a few letters of the name.
 `![alt](url)` and bare addresses — are drawn as their label, images as `▣ alt`;
 hover one to see the address in the footer, click it to open it (`xdg-open`, or
 `open` on a Mac). Click a block to put the caret there, a `▸`/`▾` bullet to
-fold, and the wheel moves. **Drop files onto the terminal** and they go onto the
-attachment shelf `att` shares, with their links at the caret, or as a block of
-their own while moving. With the mouse in use, hold shift to select text in the
-terminal.
+fold, the box of a task to tick it, and the wheel moves. **Drop files onto the
+terminal** and they go onto the attachment shelf `att` shares, with their links
+at the caret, or as a block of their own while moving. With the mouse in use,
+hold shift to select text in the terminal.
+
+A line that starts with `#` is a heading in the outliner as in the window: drawn
+bold without its hashes, which come back while you write it.
 
 `shift+enter` is not distinguishable from `enter` in most terminals, so the
 newline-inside-a-block key is `alt+enter` or `ctrl+j`. In kitty you can map
@@ -182,6 +185,13 @@ becomes a task when you say `/todo` or give it a `/deadline`, never because you
 clicked near it. A checkbox, once there, ticks off on a click.
 Errors stay in the corner until dismissed and are kept in Messages afterwards —
 a push that failed while you were looking elsewhere is still there.
+
+**Pictures.** Drop files on the window and they go onto the shelf, linked in the
+page you are reading. Paste a screenshot (`⌘⌃⇧4` on a Mac) into a block and it
+goes onto the shelf as `screenshot-<date>-<time>.png`, with its link typed at
+the caret; a clipboard with words on it pastes the words. Pictures on the shelf
+are shown in the page. The text size is the `app.font_size` setting, in pixels
+from 10 to 28; the outliner uses the terminal's font and ignores it.
 
 
 The same notes in a window, for when an outline is easier to read than to type:
@@ -345,6 +355,7 @@ comments are replaced; values are not.
 | `format.blank_lines` | a blank line between top-level blocks |
 | `deadline.property` | `Deadline` or `due`, whichever you prefer |
 | `dates.end_of_week` | what `eow` means: friday or sunday |
+| `app.font_size` | the text size in the desktop app, in pixels |
 
 Two of those are **not** in tlog's config file, and the menus say so. Pushing
 and the remote belong to the notes directory and live in its own git config, as
@@ -394,7 +405,8 @@ tlog files budget                    # narrowed, fuzzily if nothing contains it
 
 In a note, `/file` offers the shelf. **In the desktop app, drop files on the
 window** — they land on the shelf and their links land in the page you are
-reading. Clicking one opens it in the Finder.
+reading. Clicking one opens it in the Finder; a picture is shown in the page,
+and a screenshot pasted into a block goes onto the shelf the same way.
 
 The original file is never moved: attaching it to a note should not take it
 away from whatever else refers to it. Images become `![embeds]`, everything

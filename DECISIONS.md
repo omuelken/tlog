@@ -193,7 +193,12 @@ files, only type their names — shell-escaped, quoted or as `file://` addresses
 depending on the terminal. `app.DroppedFiles` treats a paste as a drop only when
 every word in it is an existing file, so pasting prose that mentions a path is
 still pasting prose. The files go onto att's shelf through the same
-`Service.Attach` the window's drop uses.
+`Service.Attach` the window's drop uses. Not every terminal brackets a drop, so
+several runes arriving in one message count as a paste too — typing delivers
+one at a time — and a path pasted by hand attaches as well, because a terminal
+cannot tell the two apart. Some terminals write one plain path per line, spaces
+and all; the lines are tried whole when reading them as shell words finds
+nothing.
 
 **No Neovim plugin; an LSP server instead (V0.2).** §11 wants completion in the
 TUI, Neovim, Helix, Zed and VS Code — five of which speak LSP natively. An LSP
@@ -249,6 +254,25 @@ two commits, and a window in which the file can move between them and leave half
 the split on disk. `SplitBlock` and `MergeIntoPrevious` take one load and one
 save, so the pair is atomic or it is refused.
 
+**The window serves the shelf to itself, and nothing else.** The page has an
+origin of its own, and WebKit will not load `file://` into it, so an attachment
+linked the way att writes it drew as a broken image. The frontend asks for
+`/file/<path>` and `app/files.go` answers for files inside the shelf only, with
+symlinks resolved on both sides before comparing, so neither `../` nor a link
+out of the shelf reaches the rest of the disk, and under a policy that draws an
+SVG without running it. The note keeps its `file://` link, which att and the
+outliner read; the rewrite happens while drawing.
+
+**A screenshot becomes a file the moment it is pasted.** The clipboard holds
+bytes with no name, and the shelf holds files, so `Service.AttachImage` writes
+the bytes under `screenshot-<date>-<time>` and puts that on the shelf through
+the same `Attach` everything else uses — same collision rule, same link. The
+kind is read from the bytes rather than the clipboard's claim, anything that is
+not a picture is refused, and a limit of fifty megabytes bounds a stray paste.
+The window's part is small: notice a file on the clipboard, hand the bytes
+across, type the link at the caret. A clipboard that also carries text pastes
+the text, because copied words that come with a preview are still words.
+
 **Collapse is view state, so the core does not read it.** `InsertAfter` and
 `SplitBlock` take an explicit `asChild bool`: the adapter has seen whether the
 children are on screen and decides; the core never guesses from whether a block
@@ -261,6 +285,13 @@ headings, rules, images and fenced code are all ordinary markdown living inside
 a block's text. Every one of them was added by teaching the adapters to draw,
 and not one changed how a file is stored — so the round-trip invariant never
 moved and no existing note was touched.
+
+**Both adapters draw a heading the same way.** A line starting with `#` was
+rendered in the window and shown raw in the outliner. The outliner now follows
+the window's rule — bold, without the hashes, the hashes back while writing —
+and nothing about the file changed for it. Bold has to be put back after every
+colour reset inside the line, or a link in a heading would end the bold for
+whatever follows it.
 
 **Markdown is rendered while reading and raw while writing.** The block under
 the caret shows the characters that are actually in the file, because the caret
@@ -373,6 +404,14 @@ is never a second file to disagree. They are still shown and changed through
 tlog's settings, marked with where they are kept — display and storage are
 different questions, and answering them separately is what avoids two sources of
 truth for one fact.
+
+**The text size is the one look-and-feel setting, and it is the window's.**
+`app.font_size` is described once like every other setting, so `tlog config`,
+the outliner's menu and the window all show and change it; the outliner ignores
+the value, because a terminal program uses the terminal's font. Every text size
+in the stylesheet is in rem from the root so that one number sizes the whole
+window; a value outside ten to twenty-eight is refused when set and falls back
+to fourteen when read from the file.
 
 **A setting that cannot take effect yet says so.** Changing the notes directory
 waits for a restart; changing `blank_lines` reformats files on their next write.

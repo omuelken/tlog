@@ -43,6 +43,9 @@ eval(lift("function shouldReload"));
 eval(lift("function refPrefix"));
 eval(lift("function atPrefix"));
 eval(lift("function bracketKey"));
+eval(lift("function imageSrc"));
+eval(lift("function pastedImage"));
+eval(lift("function dataURLBody"));
 
 let failures = 0;
 function eq(label, got, want) {
@@ -305,6 +308,48 @@ eq(
   JSON.stringify(refPrefix("f((x)) and ((lect")),
   '{"kind":"ref","prefix":"lect"}'
 );
+
+// --- pictures: shown from the shelf, pasted onto it -------------------------
+
+eq("a picture on the shelf is fetched from the app, not from file://",
+  imageSrc("file:///Users/ada/.att/store/my%20plan.png"),
+  "/file/Users/ada/.att/store/my%20plan.png");
+eq("a picture on the web is left alone",
+  imageSrc("https://x.example/p.png"), "https://x.example/p.png");
+eq("the embed in a block goes through the same door",
+  decorateInline("![plan](file:///home/ada/.att/store/plan.png)"),
+  '<img src="/file/home/ada/.att/store/plan.png" alt="plan" loading="lazy">');
+
+const clip = (items, text = "") => ({
+  items: items.map((it) => ({ ...it, getAsFile: () => it })),
+  getData: (t) => (t === "text/plain" ? text : ""),
+});
+eq("a screenshot on the clipboard is the picture",
+  (pastedImage(clip([{ kind: "file", type: "image/png" }])) || {}).type, "image/png");
+eq("a clipboard with words on it pastes the words, preview or not",
+  pastedImage(clip([{ kind: "file", type: "image/png" }], "some words")), null);
+eq("a file that is not a picture is not taken",
+  pastedImage(clip([{ kind: "file", type: "application/pdf" }])), null);
+eq("an empty clipboard is nothing", pastedImage(null), null);
+eq("the app gets the bytes, not the data: prefix",
+  dataURLBody("data:image/png;base64,iVBORw0KGgo="), "iVBORw0KGgo=");
+eq("a malformed data url sends nothing", dataURLBody("nonsense"), "");
+
+// --- a window can be dropped onto ---------------------------------------------
+//
+// Wails reports a drop only when it lands on an element carrying the drop
+// target property, and app.js asks for exactly that. The two halves live in
+// different files, so this holds them together.
+const css = fs.readFileSync(path.join(__dirname, "style.css"), "utf8");
+const layout = (css.match(/#layout\s*\{[^}]*\}/) || [""])[0];
+eq("the layout is a drop target", /--wails-drop-target:\s*drop/.test(layout), true);
+eq("app.js asks Wails for drops on the drop target", /OnFileDrop\([\s\S]*?\},\s*true\)/.test(src), true);
+
+// --- the text size scales as one ----------------------------------------------
+
+eq("no text size is pinned in pixels, so app.font_size reaches all of it",
+  (css.match(/font-size:\s*\d+px/g) || []).filter((m) => !/14px/.test(m)), []);
+eq("the root is where the size is set", /html\s*\{\s*font-size:\s*14px/.test(css), true);
 
 // --- nothing in a note may become markup -------------------------------------
 //

@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/base64"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -501,4 +505,33 @@ func blockAt(bs []tapp.BlockView, off int) *tapp.BlockView {
 		}
 	}
 	return nil
+}
+
+func TestPastingAScreenshotFromTheApp(t *testing.T) {
+	shelf := t.TempDir()
+	t.Setenv("ATT_DIR", shelf)
+	a := newAPI(t)
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	link, err := a.PasteImage(base64.StdEncoding.EncodeToString(buf.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(link, "![screenshot-") || !strings.Contains(link, "](file://") || !strings.HasSuffix(link, ".png)") {
+		t.Fatalf("link: %q", link)
+	}
+	entries, _ := os.ReadDir(filepath.Join(shelf, "store"))
+	if len(entries) != 1 {
+		t.Fatalf("the shelf holds %d files", len(entries))
+	}
+
+	if _, err := a.PasteImage(base64.StdEncoding.EncodeToString([]byte("just words"))); err == nil {
+		t.Fatal("text was accepted as a picture")
+	}
+	if _, err := a.PasteImage("not base64 at all!"); err == nil {
+		t.Fatal("garbage was accepted")
+	}
 }

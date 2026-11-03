@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -373,6 +374,22 @@ func (a *API) AttachFiles(rel string, paths []string) (*Edit, error) {
 		return nil, err
 	}
 	return &Edit{Page: page}, nil
+}
+
+// PasteImage puts a picture from the clipboard — a screenshot, most of the
+// time — on the shelf and returns the link to type at the caret. The bytes
+// come base64-encoded because that is how a WebView hands a file across; the
+// core decides whether they are a picture at all.
+func (a *API) PasteImage(b64 string) (string, error) {
+	data, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return "", fmt.Errorf("the clipboard could not be read: %w", err)
+	}
+	v, err := a.svc.AttachImage(data, time.Now())
+	if err != nil {
+		return "", err
+	}
+	return v.Link, nil
 }
 
 // ChooseFiles opens the system file dialog, for when there is nothing to drag.

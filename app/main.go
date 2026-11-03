@@ -37,12 +37,14 @@ func main() {
 	api := &API{svc: svc}
 
 	err = wails.Run(&options.App{
-		Title:         "tlog",
-		Width:         1100,
-		Height:        760,
-		MinWidth:      520,
-		MinHeight:     360,
-		AssetServer:   &assetserver.Options{Assets: ui},
+		Title:     "tlog",
+		Width:     1100,
+		Height:    760,
+		MinWidth:  520,
+		MinHeight: 360,
+		// Pictures on the shelf are served to the page by the app itself,
+		// because the WebView will not load file:// into it. Nothing else is.
+		AssetServer:   &assetserver.Options{Assets: ui, Handler: shelfFiles(svc.AttachDir)},
 		Bind:          []any{api},
 		OnBeforeClose: api.onClose,
 		OnStartup: func(ctx context.Context) {
