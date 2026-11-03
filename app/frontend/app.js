@@ -1666,7 +1666,11 @@ const KEYS = [
 // the sidebar covers the page, and it ends as soon as you have picked
 // something. The stylesheet does the hiding; this only moves the classes.
 
-const NARROW = window.matchMedia("(max-width: 720px)");
+// Without matchMedia (jsdom, in the smoke test) the window is never narrow:
+// the sidebar stays beside the page, which is what a wide window does anyway.
+const NARROW = window.matchMedia
+  ? window.matchMedia("(max-width: 720px)")
+  : { matches: false, addEventListener() {} };
 const rootClass = document.documentElement.classList;
 
 function sidebarOpen() {

@@ -1779,7 +1779,10 @@ func TestHelpScrollsAndOnlyClosesWhenAsked(t *testing.T) {
 		t.Fatal("F1 did not open the help")
 	}
 	first := stripANSI(m.View())
-	if !strings.Contains(first, m.svc.Store.Root) {
+	// A long path is wrapped, and broken where it has to be, so it is looked
+	// for with the line breaks and the indentation taken out.
+	squash := func(s string) string { return strings.Join(strings.Fields(s), "") }
+	if !strings.Contains(squash(first), squash(tildeHome(m.svc.Store.Root))) {
 		t.Fatalf("the help does not say where the notes are:\n%s", first)
 	}
 	for _, line := range strings.Split(first, "\n") {
