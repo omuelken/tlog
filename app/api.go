@@ -122,7 +122,10 @@ func addr(rel string, offset int, hash string) tapp.Addr {
 }
 
 // after turns a mutation result into the page the frontend should now draw.
+// Each call from the window is one thing a person did, so the step it wrote is
+// closed here: undo takes it back whole, and apart from the next.
 func (a *API) after(res *tapp.Result, err error) (*Edit, error) {
+	a.svc.Checkpoint()
 	if err != nil {
 		return nil, err
 	}
@@ -210,6 +213,27 @@ func (a *API) onClose(ctx context.Context) bool {
 // are allowed, and what a relative path is relative to, is the core's rule, so
 // the window and the outliner open exactly the same things.
 func (a *API) OpenURL(url string) error { return a.svc.OpenLink("", url) }
+
+// Undo takes back the last thing written, from this window, and returns the
+// page it was on. It is refused if the file has been changed elsewhere since,
+// rather than writing the old text over someone else's.
+func (a *API) Undo() (*Edit, error) { return a.replay(a.svc.Undo) }
+
+// Redo puts back the last thing undone.
+func (a *API) Redo() (*Edit, error) { return a.replay(a.svc.Redo) }
+
+func (a *API) replay(run func() (*tapp.Undone, error)) (*Edit, error) {
+	a.svc.Checkpoint()
+	done, err := run()
+	if err != nil {
+		return nil, err
+	}
+	page, err := a.svc.View(done.Rel)
+	if err != nil {
+		return nil, err
+	}
+	return &Edit{Page: page}, nil
+}
 
 // --- slash commands ---------------------------------------------------------
 
@@ -340,6 +364,7 @@ func (a *API) AttachFiles(rel string, paths []string) (*Edit, error) {
 	if len(paths) == 0 {
 		return nil, fmt.Errorf("nothing to attach")
 	}
+	defer a.svc.Checkpoint()
 	if _, err := a.svc.AttachTo(rel, paths...); err != nil {
 		return nil, err
 	}

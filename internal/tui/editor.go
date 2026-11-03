@@ -10,6 +10,57 @@ type editor struct {
 	runes   []rune
 	cur     int
 	goalCol int
+
+	// The block's own undo, for typing that has not been written yet: a
+	// snapshot before each change, with a run of letters kept as one, so
+	// undo takes back a word rather than a character. Once the block is
+	// left, what was typed is a write, and the core's undo has it.
+	undos, redos []edSnap
+	lastKind     string
+}
+
+type edSnap struct {
+	runes []rune
+	cur   int
+}
+
+// remember takes a snapshot before a change. Typing letter after letter, or
+// deleting one after another, continues the step already begun; anything
+// else starts a new one.
+func (e *editor) remember(kind string) {
+	e.redos = nil
+	if kind == e.lastKind && (kind == "type" || kind == "delete") && len(e.undos) > 0 {
+		return
+	}
+	e.lastKind = kind
+	e.undos = append(e.undos, edSnap{runes: append([]rune(nil), e.runes...), cur: e.cur})
+	if len(e.undos) > 200 {
+		e.undos = e.undos[1:]
+	}
+}
+
+// undo takes back the last step of typing, reporting false when there is
+// none left in this block.
+func (e *editor) undo() bool {
+	if len(e.undos) == 0 {
+		return false
+	}
+	last := e.undos[len(e.undos)-1]
+	e.undos = e.undos[:len(e.undos)-1]
+	e.redos = append(e.redos, edSnap{runes: append([]rune(nil), e.runes...), cur: e.cur})
+	e.runes, e.cur, e.lastKind, e.goalCol = last.runes, last.cur, "", -1
+	return true
+}
+
+func (e *editor) redo() bool {
+	if len(e.redos) == 0 {
+		return false
+	}
+	next := e.redos[len(e.redos)-1]
+	e.redos = e.redos[:len(e.redos)-1]
+	e.undos = append(e.undos, edSnap{runes: append([]rune(nil), e.runes...), cur: e.cur})
+	e.runes, e.cur, e.lastKind, e.goalCol = next.runes, next.cur, "", -1
+	return true
 }
 
 func newEditor(s string) *editor {
@@ -20,6 +71,15 @@ func newEditor(s string) *editor {
 func (e *editor) String() string { return string(e.runes) }
 
 func (e *editor) insert(s string) {
+	if strings.TrimSpace(s) == "" {
+		e.remember("space")
+	} else {
+		e.remember("insert")
+	}
+	e.put(s)
+}
+
+func (e *editor) put(s string) {
 	r := []rune(s)
 	e.runes = append(e.runes[:e.cur], append(r, e.runes[e.cur:]...)...)
 	e.cur += len(r)
@@ -38,10 +98,15 @@ func (e *editor) typeRune(s string) {
 	case s == "]" && strings.HasPrefix(e.textAfter(), "]"):
 		e.right()
 	case s == "[" && strings.HasSuffix(e.textBefore(), "[") && !strings.HasPrefix(e.textAfter(), "]]"):
-		e.insert("[]]")
+		e.remember("type")
+		e.put("[]]")
 		e.cur -= 2
+	case strings.TrimSpace(s) == "":
+		e.remember("space")
+		e.put(s)
 	default:
-		e.insert(s)
+		e.remember("type")
+		e.put(s)
 	}
 }
 
@@ -51,6 +116,7 @@ func (e *editor) backspace() bool {
 	if e.cur == 0 {
 		return false
 	}
+	e.remember("delete")
 	// Inside an empty pair, both halves go: [[|]] backs out to [|] and then to
 	// nothing, rather than leaving a stray ]] behind.
 	if e.runes[e.cur-1] == '[' && e.cur < len(e.runes) && e.runes[e.cur] == ']' {
@@ -67,12 +133,14 @@ func (e *editor) del() {
 	if e.cur >= len(e.runes) {
 		return
 	}
+	e.remember("delete")
 	e.runes = append(e.runes[:e.cur], e.runes[e.cur+1:]...)
 	e.goalCol = -1
 }
 
 // deleteWord removes the word before the cursor.
 func (e *editor) deleteWord() {
+	e.remember("cut")
 	i := e.cur
 	for i > 0 && isSpace(e.runes[i-1]) {
 		i--
@@ -87,6 +155,7 @@ func (e *editor) deleteWord() {
 
 // deleteToLineStart removes everything from the start of the current line.
 func (e *editor) deleteToLineStart() {
+	e.remember("cut")
 	start := e.lineStart(e.cur)
 	e.runes = append(e.runes[:start], e.runes[e.cur:]...)
 	e.cur = start
@@ -217,6 +286,7 @@ func (e *editor) replaceBefore(n int, s string) {
 	if n > e.cur {
 		n = e.cur
 	}
+	e.remember("replace")
 	r := []rune(s)
 	e.runes = append(e.runes[:e.cur-n], append(r, e.runes[e.cur:]...)...)
 	e.cur = e.cur - n + len(r)

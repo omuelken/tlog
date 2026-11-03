@@ -396,6 +396,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// the next thing that happens. Recording the change here rather than at
 	// thirty assignment sites means nothing can be said without being kept.
 	before, beforeErr, beforeMode := m.status, m.errMsg, m.mode
+	// Each key and each click is one thing a person did: whatever it writes
+	// is undone together, and apart from whatever the next one writes.
+	switch msg.(type) {
+	case tea.KeyMsg, tea.MouseMsg:
+		m.svc.Checkpoint()
+	}
 	// Synced on the way in too, so a key always lands in the block under the
 	// cursor even if the cursor was put there by something other than a key.
 	m.syncEditor()
@@ -533,6 +539,10 @@ func (m *Model) moveKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 		m.structural(func(a app.Addr) (*app.Result, error) { return m.svc.Move(a, -1) })
 	case "alt+down":
 		m.structural(func(a app.Addr) (*app.Result, error) { return m.svc.Move(a, 1) })
+	case "u":
+		m.undoFile(false)
+	case "U":
+		m.undoFile(true)
 	case "?":
 		m.mode = modeHelp
 	case "q":
@@ -599,6 +609,22 @@ func (m *Model) outlineKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "ctrl+r":
 		m.reload()
+		return m, nil
+	case "ctrl+z":
+		// Typing not yet written is undone in the block, a word at a time;
+		// once there is none, it is the last thing written that goes.
+		if m.mode == modeOutline && m.ed != nil && m.ed.undo() {
+			m.updateCompletion()
+			return m, nil
+		}
+		m.undoFile(false)
+		return m, nil
+	case "ctrl+y":
+		if m.mode == modeOutline && m.ed != nil && m.ed.redo() {
+			m.updateCompletion()
+			return m, nil
+		}
+		m.undoFile(true)
 		return m, nil
 	case "ctrl+g":
 		if m.activateRow() {
@@ -679,10 +705,11 @@ func (m *Model) typingKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 		// operation precisely because this is the key people hold down.
 		before, after := m.ed.split()
 		asChild := m.hasVisibleChildren(m.edBlock)
-		if !m.ensureOnDisk() {
+		a, ok := m.commitText()
+		if !ok {
 			return m, nil
 		}
-		if m.apply(m.svc.SplitBlock(m.addrOf(m.edBlock), before, after, asChild)) {
+		if m.apply(m.svc.SplitBlock(a, before, after, asChild)) {
 			m.attach(0)
 		}
 		return m, nil
@@ -789,6 +816,46 @@ func (m *Model) moveCursor(delta int) {
 	m.leave()
 	m.cur = max(0, min(m.cur+delta, len(m.rows)-1))
 	m.syncEditor()
+}
+
+// undoFile takes back the last thing written, or puts back the last thing
+// taken back. If it was on another page, that page is where you end up, so the
+// change is seen happening rather than made out of sight.
+func (m *Model) undoFile(redo bool) {
+	m.leave()
+	word, did := "undo", "undone"
+	run := m.svc.Undo
+	if redo {
+		word, did, run = "redo", "redone", m.svc.Redo
+	}
+	done, err := run()
+	if err != nil {
+		var conflict *store.ErrConflict
+		if asConflict(err, &conflict) {
+			m.errMsg = fmt.Sprintf("cannot %s: %s was changed elsewhere since", word, store.Title(conflict.Rel))
+			return
+		}
+		m.fail(err)
+		return
+	}
+	m.look = nil
+	m.errMsg = ""
+	if done.Rel != m.doc.Rel {
+		m.goTo(done.Rel)
+	} else {
+		row := m.cur
+		if err := m.reloadFromDisk(); err != nil {
+			m.errMsg = err.Error()
+			return
+		}
+		m.cur = max(0, min(row, len(m.rows)-1))
+	}
+	m.syncEditor()
+	where := store.Title(done.Rel)
+	if len(done.Rels) > 1 {
+		where += fmt.Sprintf(" and %d more", len(done.Rels)-1)
+	}
+	m.status = did + " — " + where
 }
 
 // reload throws away what is not on disk, so it asks first: a second ctrl+r.
@@ -1126,6 +1193,9 @@ func (m *Model) commitText() (app.Addr, bool) {
 	if !m.ensureOnDisk() {
 		return app.Addr{}, false
 	}
+	// What was typed is a step of its own, so undoing the indent or the
+	// split that follows leaves the typing alone.
+	m.svc.Checkpoint()
 	return m.addrOf(m.edBlock), true
 }
 

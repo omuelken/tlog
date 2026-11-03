@@ -138,6 +138,21 @@ alt+←/→ as a chord; ctrl+enter and shift+enter arrive as enter. There is no
 setting for the old vim mode; a setting for a decision is a supported way to
 break it.
 
+**Undo lives in the core, and refuses rather than overwrites.** Every write
+goes through `Service.Save`, which keeps the file as it was and as it became;
+an adapter marks where one thing a person did ends (`Checkpoint` — the outliner
+per key or click, the window per call), so one undo takes back one action.
+Undoing is a write like any other and is held to the compare-and-swap rule: if
+the file no longer says what tlog last wrote — nvim, a pull, the other window —
+the undo is refused and kept, never written over the newer text. When an action
+has to save typing before it can act (Tab, Enter, a slash command), the typing
+is a step of its own, so undoing the indent does not also take the words. Typing
+not yet written is undone inside the block, a word at a time, before anything
+on disk is touched. The history is per session and in memory: git already holds
+everything older, and a persisted undo log would be a second history to keep
+consistent with the first. Ctrl+Shift+Z cannot be told from Ctrl+Z in a
+terminal, so redo is Ctrl+Y there.
+
 **People are special in how they are found, not in how they are stored.** Most
 links in these notes are to people, and `[[Julia Rausenberger]]` is a lot to type.
 A syntax of their own (`@Julia`) was considered and refused: names have spaces,

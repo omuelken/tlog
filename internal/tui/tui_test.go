@@ -1894,3 +1894,96 @@ func TestBracketsPairEvenWhenTypedFast(t *testing.T) {
 		t.Fatalf("a paste was changed: %q", got)
 	}
 }
+
+// --- undo ----------------------------------------------------------------------
+
+func TestUndoTypingAWordAtATime(t *testing.T) {
+	m := newModel(t)
+	typeText(t, m, "hello world")
+	send(t, m, k(tea.KeyCtrlZ))
+	if got := m.ed.String(); got != "hello " {
+		t.Fatalf("one undo should take back a word: %q", got)
+	}
+	send(t, m, k(tea.KeyCtrlZ), k(tea.KeyCtrlZ))
+	if got := m.ed.String(); got != "" {
+		t.Fatalf("got %q", got)
+	}
+	send(t, m, k(tea.KeyCtrlY))
+	if got := m.ed.String(); got != "hello" {
+		t.Fatalf("redo: %q", got)
+	}
+}
+
+func TestUndoAnEditToABlockLeftBehind(t *testing.T) {
+	m := treeModel(t, "- one\n\n- two\n")
+	typeText(t, m, " more")
+	send(t, m, k(tea.KeyDown)) // leaving the block writes it
+	if got := onDisk(t, m); got != "- one more\n\n- two\n" {
+		t.Fatalf("got %q", got)
+	}
+	send(t, m, k(tea.KeyCtrlZ)) // nothing typed in "two", so the file goes back
+	if got := onDisk(t, m); got != "- one\n\n- two\n" {
+		t.Fatalf("after undo: %q", got)
+	}
+	if !strings.Contains(m.status, "undone") {
+		t.Fatalf("nothing was said: %q", m.status)
+	}
+	send(t, m, k(tea.KeyCtrlY))
+	if got := onDisk(t, m); got != "- one more\n\n- two\n" {
+		t.Fatalf("after redo: %q", got)
+	}
+}
+
+func TestUndoAfterTabOrEnterKeepsTheTyping(t *testing.T) {
+	m := newModel(t)
+	typeText(t, m, "parent")
+	send(t, m, k(tea.KeyEnter))
+	typeText(t, m, "child")
+	send(t, m, k(tea.KeyTab))
+	if got := onDisk(t, m); got != "- parent\n  - child\n" {
+		t.Fatalf("got %q", got)
+	}
+	send(t, m, k(tea.KeyCtrlZ)) // the indent, not the word
+	if got := onDisk(t, m); got != "- parent\n\n- child\n" {
+		t.Fatalf("after undoing the indent: %q", got)
+	}
+	send(t, m, k(tea.KeyCtrlZ)) // the word "child"
+	send(t, m, k(tea.KeyCtrlZ)) // the new block, but "parent" stays
+	if got := onDisk(t, m); got != "- parent\n" {
+		t.Fatalf("after undoing the split: %q", got)
+	}
+}
+
+func TestUndoGoesToThePageItChanges(t *testing.T) {
+	m := newModel(t)
+	if _, err := m.svc.AddToPage("Plans", "x"); err != nil {
+		t.Fatal(err)
+	}
+	m.goTo("pages/Plans.md")
+	typeText(t, m, "y")
+	send(t, m, k(tea.KeyEsc)) // written
+	m.goTo(m.svc.TodayRel())
+	send(t, m, runeKey('u'))
+	if m.doc.Rel != "pages/Plans.md" || onDisk(t, m) != "- x\n" {
+		t.Fatalf("on %q with %q", m.doc.Rel, onDisk(t, m))
+	}
+	send(t, m, runeKey('U'))
+	if got := onDisk(t, m); got != "- xy\n" {
+		t.Fatalf("U did not redo: %q", got)
+	}
+}
+
+func TestUndoRefusesToOverwriteAnEditMadeElsewhere(t *testing.T) {
+	m := treeModel(t, "- one\n")
+	typeText(t, m, "!")
+	send(t, m, k(tea.KeyEsc))
+	externalWrite(t, m, m.doc.Rel, "- theirs\n")
+	m.Update(changed(t, m, m.doc.Rel))
+	m.Update(runeKey('u'))
+	if got := onDisk(t, m); got != "- theirs\n" {
+		t.Fatalf("undo overwrote their edit: %q", got)
+	}
+	if !strings.Contains(m.errMsg, "changed elsewhere") {
+		t.Fatalf("got %q", m.errMsg)
+	}
+}

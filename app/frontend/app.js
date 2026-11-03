@@ -1642,6 +1642,10 @@ document.addEventListener("mousedown", (e) => {
 const KEYS = [
   { key: "k", mod: true, label: "Search", run: focusSearch },
   { key: "f", mod: true, label: "Search", run: focusSearch },
+  // Handled before this table is walked, so typing in a block keeps the
+  // browser's own undo; listed here so the keyboard sheet shows them.
+  { key: "z", mod: true, label: "Undo", run: () => undoRedo(false) },
+  { key: "z", mod: true, shift: true, label: "Redo", run: () => undoRedo(true) },
   { key: "t", mod: true, label: "Today", run: () => openToday() },
   { key: "a", mod: true, shift: true, label: "Agenda", run: () => openAgenda() },
   { key: "[", mod: true, label: "Back", run: () => goBack() },
@@ -1717,6 +1721,15 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   const mod = e.metaKey || e.ctrlKey;
+  // Undo: typing not yet saved is the browser's own, a block at a time; once
+  // there is none, it is the last thing written that goes, through the core.
+  if (mod && !e.altKey && (e.key.toLowerCase() === "z" || e.key.toLowerCase() === "y")) {
+    const el = document.activeElement;
+    if (el && el.classList && el.classList.contains("text") && raw(el) !== el.dataset.raw) return;
+    e.preventDefault();
+    undoRedo(e.key.toLowerCase() === "y" || e.shiftKey);
+    return;
+  }
   for (const k of KEYS) {
     if (e.key.toLowerCase() !== k.key.toLowerCase() && e.key !== k.key) continue;
     if (!!k.mod !== mod) continue;
@@ -1727,6 +1740,14 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 });
+
+async function undoRedo(redo) {
+  const edit = await call(() => (redo ? api().Redo() : api().Undo()));
+  if (!edit) return;
+  show(edit.page);
+  refreshIndex();
+  say(redo ? "Redone" : "Undone");
+}
 
 // --- going somewhere -------------------------------------------------------
 //

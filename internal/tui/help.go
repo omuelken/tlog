@@ -43,6 +43,7 @@ func (m *Model) helpParts() []helpPart {
 		key("alt+↑  alt+↓", "move the block, with everything under it"),
 		key("backspace", "at the start of a block, join it to the one above; an empty block goes"),
 		key("↑ ↓ ← →", "move the caret; they run on from one block into the next"),
+		key("ctrl+z  ctrl+y", "undo, redo: typing a word at a time, then each thing written"),
 		key("esc", "stop writing and move around"),
 
 		heading("Moving"),
@@ -59,6 +60,7 @@ func (m *Model) helpParts() []helpPart {
 		key("dd", "delete the block and everything under it — git keeps the old version"),
 		key("z  h l", "fold and unfold"),
 		key("a", "the agenda: everything with a deadline"),
+		key("u  U", "undo, redo — a change on another page takes you there"),
 		key("q", "quit"),
 
 		heading("In either mode"),

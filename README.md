@@ -73,6 +73,7 @@ around with single letters; `enter` picks it back up.
 | `↑ ↓ ← →` | move; they run on from one block into the next |
 | `@` | mention someone: people you write about first, then days and pages; a new name makes a new person |
 | `[[` `((` `/` | link a page (the `]]` closes itself) · block reference · commands like `/todo` |
+| `ctrl+z` `ctrl+y` | undo, redo — typing a word at a time, then each thing written |
 | `esc` | stop writing and move around (saves the block) |
 
 **Moving** — after `esc`. The block is highlighted and letters are commands.
@@ -90,6 +91,7 @@ around with single letters; `enter` picks it back up.
 | `dd` | delete the block and everything in it |
 | `z` / `h` `l` | fold · unfold |
 | `a` | agenda: everything with a deadline |
+| `u` / `U` | undo, redo — a change on another page takes you there |
 | `?` / `q` | help · quit |
 
 **Either** — `ctrl+p` go to · `ctrl+f` search · `ctrl+t` today · `ctrl+o` back ·

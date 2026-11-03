@@ -36,6 +36,8 @@ type Service struct {
 	// Launch hands a link to the desktop. Nil means the system's own opener;
 	// tests put a recorder here so that nothing actually opens.
 	Launch func(target string) error
+
+	hist history // what Undo takes back; see undo.go
 }
 
 // New opens the notes directory, creating it and its git repository if needed.
@@ -139,8 +141,17 @@ func (s *Service) Save(d *Doc) error {
 	if markdown.Hash(out) == d.Hash {
 		return nil // the file on disk already says exactly this
 	}
+	// What the file says now, for undo. It is checked against the hash by the
+	// write itself, so a file that moved is still refused rather than recorded.
+	before, err := s.Store.Read(d.Rel)
+	if err != nil {
+		return err
+	}
 	if err := s.Store.Write(d.Rel, out, d.Hash); err != nil {
 		return err
+	}
+	if before.Hash == d.Hash {
+		s.record(d.Rel, before.Data, out)
 	}
 	d.Hash = markdown.Hash(out)
 	s.Git.Touch(d.Rel)
