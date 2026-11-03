@@ -25,10 +25,12 @@ func clickAt(x, y int) tea.MouseMsg {
 	return mouseAt(x, y, tea.MouseActionPress, tea.MouseButtonLeft)
 }
 
-// opened records what was handed to the desktop, instead of opening it.
+// opened records what was handed to the desktop, instead of opening it, as
+// if the outliner ran on the machine with the screen.
 func opened(m *Model) *[]string {
 	var got []string
 	m.svc.Launch = func(target string) error { got = append(got, target); return nil }
+	overSSH = func() bool { return false }
 	return &got
 }
 

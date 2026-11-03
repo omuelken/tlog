@@ -80,6 +80,10 @@ func (s *Service) Settings() []Setting {
 			"Text size in the desktop app",
 			fmt.Sprintf("in pixels, %d to %d — the outliner uses the terminal's font",
 				config.MinFontSize, config.MaxFontSize), "config"},
+
+		{"outliner.terminal", c.Outliner.Terminal, "text",
+			"What opens a folder link in the outliner",
+			"empty: a new tab in this terminal — or a command, with {dir} for the folder", "config"},
 	}
 }
 
@@ -209,6 +213,8 @@ func setConfigValue(c config.Config, key, v string) (config.Config, error) {
 			return c, fmt.Errorf("%q is not a size from %d to %d", v, config.MinFontSize, config.MaxFontSize)
 		}
 		c.App.FontSize = n
+	case "outliner.terminal":
+		c.Outliner.Terminal = v
 	default:
 		return c, fmt.Errorf("no such setting: %s", key)
 	}

@@ -186,7 +186,39 @@ terminal program.
 https, mailto and files that exist, resolves a relative path against the note it
 is written in (which is how Logseq's `../assets` links are meant), and hands the
 rest to `xdg-open` or `open` without waiting. The window used to hold its own
-copy of the scheme list; it calls the core now.
+copy of the scheme list; it calls the core now, and says which note the link
+is in, so a relative path means the same in both.
+
+**A link never runs a program.** A note is text, and text can name anything —
+an import, a paste, a synced file — and `open` runs an `.app`, a `.command` or
+an installer as readily as it shows a PDF. So `Service.LinkOpening` says what
+is there before anything is opened: an address, a document, a folder or a
+program. A program is shown selected in its folder (`open -R`) and never
+started. A `.sh` is not among them: opening one opens an editor.
+
+**The system says what a thing is, via `mdls`.** On a Mac a `.pages` document
+and an `.app` are directories, so "is it a folder" is not answered by `stat`.
+Launch Services' type tree is: `com.apple.package` makes a directory a file,
+`public.executable` and a short list of Terminal and Installer types make it
+a program. Where `mdls` has no answer — Linux, a volume Spotlight does not
+index — a short list of extensions and the execute bit stand in, erring
+towards "program", since the cost of that mistake is a folder shown and of the
+other a program run. It is asked on a click only, never while drawing.
+
+**A folder in the outliner is a terminal tab.** Each terminal spells "new tab
+here" differently, so the outliner reads the environment it runs in (`TMUX`,
+`ZELLIJ`, `KITTY_WINDOW_ID`, `WEZTERM_PANE`, `TERM_PROGRAM`) and uses that
+terminal's own way, a multiplexer first because that is where you are. Where a
+tab is not on offer — kitty without remote control, Ghostty — a new window is.
+`outliner.terminal` overrides all of it with a command, run without a shell so
+a path with spaces stays one argument. On a Mac a folder is handed to the
+running kitty or Ghostty with `open -a`, never by starting the program: a
+second process is a second app, with its own Dock icon. A program's link opens
+a terminal in the folder that holds it. The window opens a folder in Finder.
+
+**Over ssh nothing is opened.** A terminal or a viewer started on the server is
+on nobody's screen, so the outliner says where the thing is instead — unless a
+multiplexer is there to open a tab in.
 
 **A drop onto the terminal is a paste of paths.** A terminal cannot hand over
 files, only type their names — shell-escaped, quoted or as `file://` addresses,

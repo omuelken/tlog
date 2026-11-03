@@ -17,10 +17,19 @@ import (
 //
 // A note is just a file and a file could name any scheme it likes, so only the
 // schemes a link in prose is actually meant to be are opened.
+//
+// A program named by a link is never run: it is shown selected in the folder
+// that holds it instead. See LinkOpening.
 func (s *Service) OpenLink(fromRel, target string) error {
-	resolved, err := s.ResolveLink(fromRel, target)
+	resolved, how, err := s.LinkOpening(fromRel, target)
 	if err != nil {
 		return err
+	}
+	if how == OpenProgram {
+		if s.Reveal != nil {
+			return s.Reveal(resolved)
+		}
+		return systemReveal(resolved)
 	}
 	if s.Launch != nil {
 		return s.Launch(resolved)
@@ -85,6 +94,25 @@ func systemOpen(target string) error {
 	go func() { _ = cmd.Wait() }()
 	return nil
 }
+
+// systemReveal shows a path selected in the file manager: Finder on a Mac.
+// There is no portable "select this file", so elsewhere the folder holding it
+// is opened, which is the honest next best thing.
+func systemReveal(path string) error {
+	cmd := exec.Command("open", "-R", path)
+	if runtime.GOOS != "darwin" {
+		cmd = exec.Command("xdg-open", filepath.Dir(path))
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("could not show %s: %w", path, err)
+	}
+	go func() { _ = cmd.Wait() }()
+	return nil
+}
+
+// CommandWords splits a configured command line into its arguments, quotes
+// and backslashes understood, so that it can be run without a shell.
+func CommandWords(text string) []string { return shellWords(text) }
 
 // DroppedFiles recognises what a terminal types when files are dragged onto
 // it: their paths, separated by spaces or newlines, shell-quoted or escaped, or

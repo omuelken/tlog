@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -140,9 +141,39 @@ func (m *Model) openHit(h linkHit) {
 	m.openLink(h.page)
 }
 
-// openURL hands an address or a file to the desktop: xdg-open, or open on a
-// Mac. The core decides what may be opened and what a relative path means.
+// openURL follows an ordinary link. The core decides what may be opened,
+// what a relative path means and what kind of thing is there. An address or
+// a document goes to the desktop — xdg-open, or open on a Mac — and so to the
+// application the system has for it. A folder is somewhere to be, so a
+// terminal opens there; a program is never run, and a terminal opens in the
+// folder that holds it instead.
 func (m *Model) openURL(target string) {
+	resolved, how, err := m.svc.LinkOpening(m.doc.Rel, target)
+	if err != nil {
+		m.errMsg = err.Error()
+		return
+	}
+	dir := resolved
+	switch how {
+	case app.OpenProgram:
+		dir = filepath.Dir(resolved)
+		fallthrough
+	case app.OpenFolder:
+		if err := openTerminal(dir, m.svc.Cfg.Outliner.Terminal); err != nil {
+			m.errMsg = err.Error()
+			return
+		}
+		m.errMsg = ""
+		m.status = "terminal opened in " + dir
+		if how == app.OpenProgram {
+			m.status = filepath.Base(resolved) + " is a program, not run from a link — " + m.status
+		}
+		return
+	}
+	if overSSH() {
+		m.errMsg = "over ssh nothing here can open it — it is " + resolved
+		return
+	}
 	if err := m.svc.OpenLink(m.doc.Rel, target); err != nil {
 		m.errMsg = err.Error()
 		return

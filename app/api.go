@@ -207,8 +207,10 @@ func (a *API) onClose(ctx context.Context) bool {
 // OpenURL hands a link to the system: a web address to the browser, a file —
 // an attachment, an image — to whatever opens that kind of file. Which schemes
 // are allowed, and what a relative path is relative to, is the core's rule, so
-// the window and the outliner open exactly the same things.
-func (a *API) OpenURL(url string) error { return a.svc.OpenLink("", url) }
+// the window and the outliner open exactly the same things. rel is the note
+// the link is written in, since a relative path is relative to it; a folder
+// opens in the file manager and a program is shown there, never run.
+func (a *API) OpenURL(rel, url string) error { return a.svc.OpenLink(rel, url) }
 
 // Undo takes back the last thing written, from this window, and returns the
 // page it was on. It is refused if the file has been changed elsewhere since,

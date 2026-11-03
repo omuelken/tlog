@@ -91,7 +91,8 @@ func (m *Model) helpParts() []helpPart {
 
 		heading("Links and files"),
 		para("A [label](address) is drawn as its label alone; point at it with the mouse to see the address."),
-		key("g  click", "open it: a website in the browser, a file in whatever opens it"),
+		key("g  click", "open it: a website in the browser, a file in whatever opens it, a folder in a new terminal tab. "+
+			"A program is never run — a terminal opens beside it instead"),
 		key("drop a file", "drag it onto the terminal: it is put on the shelf in ~/.att and linked where you are"),
 		key("/file", "link something already on the shelf"),
 

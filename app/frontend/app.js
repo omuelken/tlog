@@ -1688,7 +1688,8 @@ document.addEventListener("mousedown", (e) => {
   }
   if (d.url) {
     e.preventDefault();
-    return call(() => api().OpenURL(d.url));
+    // A relative path is relative to the note the link is written in.
+    return call(() => api().OpenURL(page ? page.rel : "", d.url));
   }
 });
 

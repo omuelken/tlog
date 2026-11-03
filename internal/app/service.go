@@ -38,6 +38,11 @@ type Service struct {
 	// tests put a recorder here so that nothing actually opens.
 	Launch func(target string) error
 
+	// Reveal shows a path selected in the file manager, which is what
+	// following a link to a program does instead of running it. Nil means
+	// Finder, or the folder in the system's file manager; tests record.
+	Reveal func(path string) error
+
 	hist history // what Undo takes back; see undo.go
 }
 

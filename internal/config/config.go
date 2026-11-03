@@ -30,6 +30,16 @@ type Config struct {
 	Dates       Dates       `toml:"dates"`
 	Watch       Watch       `toml:"watch"`
 	App         App         `toml:"app"`
+	Outliner    Outliner    `toml:"outliner"`
+}
+
+// Outliner is what the terminal program does that the window does not.
+type Outliner struct {
+	// Terminal is the command that opens a terminal in a folder, for a link
+	// to a folder; {dir} is replaced by the folder. It is run directly, not
+	// through a shell, so a path with spaces stays one argument. Empty means:
+	// ask whatever terminal tlog is running in for a new tab.
+	Terminal string `toml:"terminal"`
 }
 
 // App is how the desktop window looks. Nothing here is about the notes.
@@ -341,6 +351,15 @@ func (c Config) render() string {
 # The text size in the desktop window, in pixels from 10 to 28. The outliner
 # uses the terminal's font and ignores this.
 `)
-	fmt.Fprintf(&b, "font_size = %d\n", c.App.FontSize)
+	fmt.Fprintf(&b, "font_size = %d\n\n", c.App.FontSize)
+
+	b.WriteString(`[outliner]
+# What following a link to a folder runs in the outliner. {dir} is the
+# folder; the command is run directly, not through a shell. Empty means a new
+# tab in the terminal tlog is running in, found out by asking it: tmux, zellij,
+# kitty, WezTerm, iTerm2, Ghostty and Terminal.app are known. For example:
+#   terminal = "alacritty --working-directory {dir}"
+`)
+	fmt.Fprintf(&b, "terminal = %q\n", c.Outliner.Terminal)
 	return b.String()
 }
