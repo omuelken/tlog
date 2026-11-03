@@ -52,7 +52,7 @@ func (m *Model) settingsKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 
 	switch k {
 	case "esc", "q", "ctrl+c":
-		m.mode = modeNormal
+		m.mode = modeOutline
 		m.settings = nil
 	case "up", "k":
 		s.sel = max(0, s.sel-1)

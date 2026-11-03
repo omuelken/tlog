@@ -13,6 +13,7 @@ type pickItem struct {
 	rel    string
 	offset int
 	link   markdown.Link
+	run    func(*Model) // a command rather than a place
 }
 
 type picker struct {
@@ -22,6 +23,7 @@ type picker struct {
 	filtered []pickItem
 	sel      int
 	live     bool // results come from a query rather than from filtering
+	creates  bool // enter on a name that matches nothing makes that page
 }
 
 func newPicker(title string, items []pickItem) *picker {

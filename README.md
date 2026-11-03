@@ -58,31 +58,43 @@ The notes directory is `$TLOG_DIR`, or `~/notes`. Any command takes `-dir`.
 
 ## Keys
 
+The outliner opens ready to write. `esc` puts the caret down so you can move
+around with single letters; `enter` picks it back up.
+
+**Writing** — typing types into the block under the caret.
+
 | | |
 |---|---|
-| `↑ ↓` / `j k` | move between blocks |
-| `← →` / `h l` | collapse · expand, or step out and in |
-| `enter` | new block below, and start typing |
-| `i` / `e` | edit this block |
+| `enter` | new block — at the caret, so it splits a block in two |
 | `alt+enter` | newline **inside** a block (also `ctrl+j`) |
 | `tab` / `shift+tab` | indent · outdent |
 | `alt+↑` `alt+↓` | move the block and its children |
-| `space` | toggle the task checkbox |
-| `dd` | delete the block and its children |
-| `[[` | page autocomplete, while typing |
-| `/` | commands: `/todo`, `/deadline fr`, `/table`, `/code` … |
-| `gf` / `gb` | follow the link · what links here, as a list |
-| `enter` | on a reference below the outline: jump to it |
-| `ctrl+p` / `/` | open a page · search every block |
+| `backspace` | at the start of a block: join it to the one above (an empty one goes) |
+| `↑ ↓ ← →` | move; they run on from one block into the next |
+| `[[` `((` `/` | page · block reference · commands like `/todo`, `/deadline fr` |
+| `esc` | stop writing and move around (saves the block) |
+
+**Moving** — after `esc`. The block is highlighted and letters are commands.
+
+| | |
+|---|---|
+| `enter` / `i` | write here |
+| `j k` / `↑ ↓` | move between blocks |
+| `p` | go to: recent pages first, then commands, journals, pages; a new name makes the page |
+| `/` | search every block |
 | `t` / `[` `]` | today · previous, next day |
-| `backspace` | back to where you came from |
-| `R` | reload from disk (asks again if you have unsaved typing) |
-| `A` | agenda: everything with a deadline |
-| `M` | messages: everything tlog has said |
-| `,` | settings |
+| `b` | back to where you came from |
+| `g` | follow the `[[link]]` in this block, or open the row below the outline |
+| `x` | toggle the task checkbox |
+| `dd` | delete the block and everything in it |
+| `z` / `h` `l` | fold · unfold |
+| `a` | agenda: everything with a deadline |
 | `?` / `q` | help · quit |
 
-Arrow keys work everywhere; the vim keys are an alternative, not the foundation.
+**Either** — `ctrl+p` go to · `ctrl+f` search · `ctrl+t` today · `ctrl+o` back ·
+`alt+←` `alt+→` days · `ctrl+g` follow · `ctrl+d` task · `ctrl+↑` `ctrl+↓` fold ·
+`ctrl+r` reload · `F1` help · `ctrl+q` quit. Backlinks, messages and settings are
+commands in the palette: `p`, then a few letters of the name.
 
 `shift+enter` is not distinguishable from `enter` in most terminals, so the
 newline-inside-a-block key is `alt+enter` or `ctrl+j`. In kitty you can map

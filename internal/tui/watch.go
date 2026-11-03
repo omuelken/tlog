@@ -39,7 +39,7 @@ func watchCmd(ch <-chan app.Change) tea.Cmd {
 // Two ways to be dirty: half-typed text that has not been folded back into the
 // block yet, and an edit whose save was refused because the file had moved.
 func (m *Model) dirty() bool {
-	if m.mode == modeInsert && m.edBlock != nil && m.ed.String() != m.edBlock.Text {
+	if m.ed != nil && m.edBlock != nil && m.ed.String() != m.edBlock.Text {
 		return true
 	}
 	// The blank bullet shown for a page that has no file yet is not work, and
@@ -63,8 +63,9 @@ func (m *Model) changed(c changedMsg) {
 	if c.Rel != m.doc.Rel {
 		// Another file: the links and tags into this page may have moved, so
 		// the sections below the outline are stale. Redrawing them mid-word
-		// would be its own kind of rude, so it waits.
-		if m.mode == modeInsert {
+		// would be its own kind of rude, so with unsaved typing it waits until
+		// the block is left.
+		if m.dirty() {
 			m.graphDirty = true
 			return
 		}
@@ -81,7 +82,7 @@ func (m *Model) changed(c changedMsg) {
 		// Never discard typing. Say so instead, and let the next save refuse
 		// on the hash — which is the same protection, now with warning.
 		m.stale = true
-		m.status = "changed on disk while you were typing — esc saves, R discards"
+		m.status = "changed on disk while you were typing — esc saves, ctrl+r discards"
 		return
 	}
 
@@ -89,16 +90,14 @@ func (m *Model) changed(c changedMsg) {
 	// made elsewhere in the file moves every offset after it, so an offset
 	// would point at a different block, while the row is roughly where you
 	// were looking.
-	caret := 0
-	if m.mode == modeInsert && m.ed != nil {
+	caret := -1
+	if m.ed != nil {
 		caret = m.ed.cur
 	}
 	if err := m.reloadFromDisk(); err != nil {
 		m.errMsg = err.Error()
 		return
 	}
-	if m.mode == modeInsert {
-		m.editHere(caret)
-	}
+	m.attach(caret)
 	m.status = "reloaded — changed on disk"
 }

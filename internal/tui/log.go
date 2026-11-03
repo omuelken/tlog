@@ -41,7 +41,7 @@ func (m *Model) openLog() {
 func (m *Model) logKey(k string) (tea.Model, tea.Cmd) {
 	switch k {
 	case "esc", "q", "ctrl+c", "M":
-		m.mode = modeNormal
+		m.mode = modeOutline
 		m.log = nil
 	case "up", "k":
 		m.log.top = max(0, m.log.top-1)

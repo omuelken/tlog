@@ -110,8 +110,33 @@ nothing you did not already know; the subtree is shown, capped per reference.
 
 **Enter makes a new block; alt+enter makes a newline.** The most-pressed key in
 the app, undecided in §10. This is what Logseq, Obsidian, Notion and Roam all do,
-so the muscle memory already exists. Arrow keys are first-class and vim keys
-layer on top, per the note added to §10.
+so the muscle memory already exists.
+
+**Writing first, esc to move.** The outliner started vim-like: a NORMAL mode
+for moving, an INSERT mode for typing, vim keys over the arrows. For taking
+notes that was the wrong default. Fixing a word two blocks up cost
+`esc k k a … esc`, a fresh journal could not be typed into without a key first,
+and the two modes looked alike apart from a word in the corner.
+
+The first fix was to have no modes at all, with everything that is not typing
+on a chord: ctrl+p, ctrl+g, alt+←. It made writing direct and getting around
+clumsy, and getting around is half of what an outliner is for.
+
+So there are two modes again, the other way round, as in Logseq's block
+selection. The outliner opens in writing, where typing types and the arrows run
+from one block into the next — fixing that word is now ↑ ↑ and type. Esc puts
+the caret down: the block is highlighted, the header says MOVE, and single
+letters go places (p go to, / search, t today, b back, g follow, [ ] days) or
+act on the block (x task, dd delete, z fold). Enter picks the caret back up.
+Leaving writing always writes the block, so nothing typed is ever stranded in a
+mode. The chords stay as shortcuts that work in both, and the rare things —
+agenda, backlinks, settings — are also commands in the palette, found by name.
+
+The terminal decided some keys: ctrl+i, ctrl+m, ctrl+h and ctrl+[ are tab,
+enter, backspace and esc; alt+[ begins every arrow-key sequence, so days are
+alt+←/→ as a chord; ctrl+enter and shift+enter arrive as enter. There is no
+setting for the old vim mode; a setting for a decision is a supported way to
+break it.
 
 **No Neovim plugin; an LSP server instead (V0.2).** §11 wants completion in the
 TUI, Neovim, Helix, Zed and VS Code — five of which speak LSP natively. An LSP
@@ -372,8 +397,8 @@ get it without remembering to.
 
 **Typing is never discarded.** When the file changes while a block is being
 edited, both surfaces say so and reload nothing. The compare-and-swap write was
-already the protection; this only adds the warning. `R` in the outliner used to
-discard an unsaved edit silently, and now asks first.
+already the protection; this only adds the warning. Reloading in the outliner
+(now ctrl+r) used to discard an unsaved edit silently, and now asks first.
 
 The risk worth writing down rather than engineering around: a poll can read a
 file mid-write from an editor that does not write atomically, and briefly show a

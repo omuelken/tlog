@@ -47,7 +47,7 @@ const threeTop = "- Alpha\n  - a1\n\n- Beta\n  - b1\n  - b2\n\n- Gamma\n"
 func collapseBlock(t *testing.T, m *Model, row int) {
 	t.Helper()
 	m.cur = row
-	send(t, m, k(tea.KeyLeft))
+	send(t, m, k(tea.KeyCtrlUp))
 }
 
 func TestAFoldFollowsItsBlockWhenItMoves(t *testing.T) {
@@ -69,7 +69,7 @@ func TestDeletingABlockAboveDoesNotMoveTheFold(t *testing.T) {
 	only(t, m, "Beta")
 
 	m.cur = 0 // Alpha
-	typeText(t, m, "dd")
+	command(t, m, "delete block")
 	only(t, m, "Beta")
 }
 
@@ -85,7 +85,7 @@ func TestAFoldIsDroppedWhenItsBlockGoes(t *testing.T) {
 	m := treeModel(t, threeTop)
 	collapseBlock(t, m, 2)
 	m.cur = 2
-	typeText(t, m, "dd") // delete Beta itself
+	command(t, m, "delete block") // delete Beta itself
 	if got := folded(m); len(got) != 0 {
 		t.Fatalf("still folded: %v", got)
 	}
@@ -157,11 +157,10 @@ func TestEditingABlockDoesNotUnfoldItsChildren(t *testing.T) {
 	// parent costs that parent's fold and nothing below it.
 	m := treeModel(t, "- parent\n  - mid\n    - leaf\n")
 	m.cur = 1 // mid, which has a child
-	send(t, m, k(tea.KeyLeft))
+	send(t, m, k(tea.KeyCtrlUp))
 	only(t, m, "mid")
 
 	m.cur = 0
-	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
 	typeText(t, m, " renamed")
 	send(t, m, k(tea.KeyEsc))
 

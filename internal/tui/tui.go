@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -18,8 +19,13 @@ import (
 type mode int
 
 const (
-	modeNormal mode = iota
-	modeInsert
+	// modeOutline is the page itself, being written: the block under the
+	// cursor is the one being typed into. It is where the outliner opens.
+	modeOutline mode = iota
+	// modeMove is the same page after esc: no caret, the block under the
+	// cursor highlighted, and single letters that go places. Everything below
+	// is something laid over the page for a moment.
+	modeMove
 	modePalette
 	modeSearch
 	modeLinks
@@ -86,9 +92,12 @@ type Model struct {
 	look *app.Lookup
 
 	history []string
-	status  string
-	errMsg  string
-	stale   bool
+	// recent is every page visited this session, most recent first, so the
+	// palette can open on the places you actually go.
+	recent []string
+	status string
+	errMsg string
+	stale  bool
 
 	// notices is everything said so far, so that a message replaced by the
 	// next one is not simply gone.
@@ -103,9 +112,8 @@ type Model struct {
 	// channel blocks forever, which is exactly the old behaviour.
 	changes <-chan app.Change
 
-	pendingG bool
-	pendingD bool
 	pendingR bool
+	pendingD bool
 
 	quitting bool
 }
@@ -165,7 +173,19 @@ func (m *Model) load(rel string) error {
 	}
 	m.cur, m.top = 0, 0
 	m.buildRows()
+	m.visited(rel)
+	m.syncEditor()
 	return nil
+}
+
+func (m *Model) visited(rel string) {
+	out := []string{rel}
+	for _, r := range m.recent {
+		if r != rel && len(out) < 30 {
+			out = append(out, r)
+		}
+	}
+	m.recent = out
 }
 
 // refresh re-reads what the notes say about the current file, after something
@@ -326,7 +346,7 @@ func (m *Model) save() {
 		var conflict *store.ErrConflict
 		if asConflict(err, &conflict) {
 			m.stale = true
-			m.errMsg = "file changed on disk — press R to reload (your edit is not saved)"
+			m.errMsg = "file changed on disk — ctrl+r reloads it (your edit is not saved)"
 			return
 		}
 		m.errMsg = err.Error()
@@ -355,8 +375,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Everything the outliner says lands in one of two lines and is replaced by
 	// the next thing that happens. Recording the change here rather than at
 	// thirty assignment sites means nothing can be said without being kept.
-	before, beforeErr := m.status, m.errMsg
+	before, beforeErr, beforeMode := m.status, m.errMsg, m.mode
+	// Synced on the way in too, so a key always lands in the block under the
+	// cursor even if the cursor was put there by something other than a key.
+	m.syncEditor()
 	model, cmd := m.update(msg)
+	// Anything laid over the page may change files — the agenda ticks tasks
+	// off, a command deletes blocks — so the block being typed is written
+	// before it opens, and the editor is put back on the cursor when it closes.
+	if beforeMode == modeOutline && m.mode != modeOutline {
+		m.leave()
+	}
+	m.syncEditor()
 	if m.status != before {
 		m.record(m.status, false)
 	}
@@ -386,15 +416,13 @@ func (m *Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	k := msg.String()
 
 	// Completion intercepts navigation keys while it is open.
-	if m.mode == modeInsert && m.comp != nil && m.comp.active {
+	if m.mode == modeOutline && m.ed != nil && m.comp != nil && m.comp.active {
 		if handled, cmd := m.completionKey(k); handled {
 			return m, cmd
 		}
 	}
 
 	switch m.mode {
-	case modeInsert:
-		return m.insertKey(msg, k)
 	case modePalette, modeSearch, modeLinks, modeBacklinks:
 		return m.pickerKey(msg, k)
 	case modeSettings:
@@ -404,147 +432,351 @@ func (m *Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case modeLog:
 		return m.logKey(k)
 	case modeHelp:
-		m.mode = modeNormal
+		m.mode = modeOutline
 		return m, nil
 	default:
-		return m.normalKey(msg, k)
+		return m.outlineKey(msg, k)
 	}
 }
 
-// --- NORMAL -----------------------------------------------------------------
+// --- moving -----------------------------------------------------------------
+//
+// Writing is what the outliner opens on, because taking notes is mostly
+// typing. Getting around is the other half, and chords for it were clumsy; so
+// esc puts the caret down and the letters become commands, the way Logseq's
+// block selection works. Enter picks the caret back up.
 
-func (m *Model) normalKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
-	if m.pendingG {
-		m.pendingG = false
-		switch k {
-		case "g":
-			m.cur = 0
-			return m, nil
-		case "f":
-			if m.activateRow() {
-				return m, nil
-			}
-			return m, m.followLink()
-		case "b":
-			m.openBacklinks()
-			return m, nil
-		}
-		return m, nil
-	}
-	if m.pendingR && k != "R" {
-		m.pendingR = false
-	}
+func (m *Model) moveKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 	if m.pendingD {
 		m.pendingD = false
 		if k == "d" {
 			m.deleteBlock()
-			return m, nil
 		}
 		return m, nil
 	}
-
 	switch k {
-	case "ctrl+c", "q":
-		m.quitting = true
-		return m, tea.Quit
-	case "?":
-		m.mode = modeHelp
-		return m, nil
-	case ",":
-		m.openSettings()
-		return m, nil
-	case "A":
-		m.openAgenda()
-		return m, nil
-	case "M":
-		m.openLog()
-		return m, nil
-	case "R":
-		// Reloading throws away whatever is not on disk, so it asks first —
-		// the same two-key confirmation as dd.
-		if m.dirty() && !m.pendingR {
-			m.pendingR = true
-			m.status = "your edit is not saved — R again to discard it"
-			return m, nil
+	case "enter":
+		if !m.activateRow() && m.current() != nil {
+			m.mode = modeOutline
 		}
-		m.pendingR = false
-		if err := m.load(m.doc.Rel); err != nil {
-			m.errMsg = err.Error()
-		} else {
-			m.errMsg = ""
-			m.status = "reloaded from disk"
+	case "i", "e":
+		if m.current() != nil {
+			m.mode = modeOutline
 		}
-		return m, nil
-
 	case "up", "k":
 		m.moveCursor(-1)
 	case "down", "j":
 		m.moveCursor(1)
-	case "g":
-		m.pendingG = true
-	case "G":
-		m.cur = max(0, len(m.rows)-1)
-	case "ctrl+u":
-		m.moveCursor(-m.viewHeight() / 2)
-	case "ctrl+d":
-		m.moveCursor(m.viewHeight() / 2)
-
 	case "left", "h":
-		m.collapseOrParent()
+		m.collapse()
 	case "right", "l":
-		m.expandOrChild()
-
-	case "enter":
-		if m.activateRow() {
-			return m, nil
+		m.expand()
+	case "z":
+		if b := m.current(); b != nil && m.collapsed[m.currentPath()] {
+			m.expand()
+		} else {
+			m.collapse()
 		}
-		m.newSibling(false)
-	case "o":
-		m.newSibling(false)
-	case "O":
-		m.newSibling(true)
-	case "i", "e", "f2":
-		m.startInsert(true)
-	case "a":
-		m.startInsert(true)
-	case "I":
-		m.startInsert(false)
-
-	case "tab":
-		m.structural(m.svc.Indent)
-	case "shift+tab":
-		m.structural(m.svc.Outdent)
-	case "alt+up", "K":
-		m.structural(func(a app.Addr) (*app.Result, error) { return m.svc.Move(a, -1) })
-	case "alt+down", "J":
-		m.structural(func(a app.Addr) (*app.Result, error) { return m.svc.Move(a, 1) })
-
-	case "d":
-		m.pendingD = true
-	case " ":
-		m.toggleTask()
-
-	case "ctrl+p":
+	case "p":
 		m.openPalette()
 	case "/":
 		m.openSearch()
 	case "t":
 		m.goTo(m.svc.TodayRel())
+	case "b", "backspace":
+		m.back()
+	case "g":
+		if !m.activateRow() {
+			m.followLink()
+		}
 	case "[":
 		m.shiftDay(-1)
 	case "]":
 		m.shiftDay(1)
-	case "backspace", "ctrl+o":
-		m.back()
+	case "a":
+		m.openAgenda()
+	case "x", " ":
+		m.toggleTask()
+	case "d":
+		if m.current() != nil {
+			m.pendingD = true
+			m.status = "d again deletes the block and everything in it"
+		}
+	case "tab":
+		m.structural(m.svc.Indent)
+	case "shift+tab":
+		m.structural(m.svc.Outdent)
+	case "alt+up":
+		m.structural(func(a app.Addr) (*app.Result, error) { return m.svc.Move(a, -1) })
+	case "alt+down":
+		m.structural(func(a app.Addr) (*app.Result, error) { return m.svc.Move(a, 1) })
+	case "?":
+		m.mode = modeHelp
+	case "q":
+		m.quitting = true
+		return m, tea.Quit
+	case "esc":
+		m.status = ""
+	default:
+		if msg.Type == tea.KeyRunes {
+			m.status = "moving — enter writes here · ? lists the keys"
+		}
 	}
 	return m, nil
 }
 
-func (m *Model) moveCursor(delta int) {
-	m.cur = max(0, min(m.cur+delta, len(m.rows)-1))
+// --- the outline ------------------------------------------------------------
+//
+// There is one mode. The block under the cursor is always the one being typed
+// into, so writing never starts with a keystroke that says you are about to
+// write. That rules out bare letters as commands, so everything that is not
+// text takes a modifier — and the few things done often enough to deserve a
+// key of their own have one, while the rest are found by name with ctrl+p.
+//
+// The keys a terminal cannot tell apart shaped the table: ctrl+i is tab, ctrl+m
+// is enter, ctrl+h is backspace, ctrl+[ is esc, and alt+[ is the start of
+// every arrow-key sequence. ctrl+enter and shift+enter arrive as plain enter in
+// most terminals, which is why a task is toggled with ctrl+d instead.
+
+func (m *Model) outlineKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
+	if k != "ctrl+r" {
+		m.pendingR = false
+	}
+
+	// Going somewhere, and everything else that is not typing.
+	switch k {
+	case "ctrl+c", "ctrl+q":
+		m.leave()
+		m.quitting = true
+		return m, tea.Quit
+	case "f1":
+		m.mode = modeHelp
+		return m, nil
+	case "ctrl+p":
+		m.openPalette()
+		return m, nil
+	case "ctrl+f":
+		m.openSearch()
+		return m, nil
+	case "ctrl+t":
+		m.goTo(m.svc.TodayRel())
+		return m, nil
+	case "ctrl+o":
+		m.back()
+		return m, nil
+	case "alt+left":
+		m.shiftDay(-1)
+		return m, nil
+	case "alt+right":
+		m.shiftDay(1)
+		return m, nil
+	case "ctrl+r":
+		m.reload()
+		return m, nil
+	case "ctrl+g":
+		if m.activateRow() {
+			return m, nil
+		}
+		m.followLinkHere()
+		return m, nil
+	case "ctrl+up":
+		m.collapse()
+		return m, nil
+	case "ctrl+down":
+		m.expand()
+		return m, nil
+	case "pgup":
+		m.moveCursor(-m.viewHeight() / 2)
+		return m, nil
+	case "pgdown":
+		m.moveCursor(m.viewHeight() / 2)
+		return m, nil
+	case "ctrl+home":
+		m.moveCursor(-len(m.rows))
+		return m, nil
+	case "ctrl+end":
+		m.moveCursor(len(m.rows))
+		return m, nil
+	}
+
+	if m.mode == modeMove {
+		// Letters typed quickly can arrive in one read, as one key holding
+		// several runes; "dd" would then be a key called "dd" that matches
+		// nothing. Each is a command of its own, so they are taken apart.
+		if msg.Type == tea.KeyRunes && len(msg.Runes) > 1 && !msg.Paste {
+			var cmd tea.Cmd
+			for _, r := range msg.Runes {
+				one := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+				_, c := m.key(one)
+				cmd = tea.Batch(cmd, c)
+			}
+			return m, cmd
+		}
+		return m.moveKey(msg, k)
+	}
+
+	// Below the outline the rows belong to other pages: they can be walked
+	// through and opened, never typed into.
+	if m.ed == nil {
+		switch k {
+		case "up":
+			m.moveCursor(-1)
+		case "down":
+			m.moveCursor(1)
+		case "enter":
+			m.activateRow()
+		case "esc":
+			m.mode = modeMove
+		default:
+			if msg.Type == tea.KeyRunes {
+				m.status = "this lives on another page — enter opens it"
+			}
+		}
+		return m, nil
+	}
+	return m.typingKey(msg, k)
 }
 
-func (m *Model) collapseOrParent() {
+// typingKey is everything that happens inside the block under the cursor.
+func (m *Model) typingKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
+	switch k {
+	case "esc":
+		// Put the caret down and go somewhere. Leaving writing writes the
+		// block, so nothing typed is ever behind a mode.
+		m.mode = modeMove
+		return m, nil
+
+	case "enter":
+		// Enter ends this block and starts the next one: the dominant action
+		// costs one keypress, and one write — splitting is a single core
+		// operation precisely because this is the key people hold down.
+		before, after := m.ed.split()
+		asChild := m.hasVisibleChildren(m.edBlock)
+		if !m.ensureOnDisk() {
+			return m, nil
+		}
+		if m.apply(m.svc.SplitBlock(m.addrOf(m.edBlock), before, after, asChild)) {
+			m.attach(0)
+		}
+		return m, nil
+
+	case "alt+enter", "ctrl+j", "shift+enter":
+		m.ed.insert("\n")
+		m.updateCompletion()
+		return m, nil
+
+	case "tab":
+		m.structuralWhileTyping(m.svc.Indent)
+		return m, nil
+	case "shift+tab":
+		m.structuralWhileTyping(m.svc.Outdent)
+		return m, nil
+	case "alt+up":
+		m.structuralWhileTyping(func(a app.Addr) (*app.Result, error) { return m.svc.Move(a, -1) })
+		return m, nil
+	case "alt+down":
+		m.structuralWhileTyping(func(a app.Addr) (*app.Result, error) { return m.svc.Move(a, 1) })
+		return m, nil
+	case "ctrl+d":
+		m.toggleTaskWhileTyping()
+		return m, nil
+
+	case "backspace":
+		if !m.ed.backspace() {
+			m.backspaceAtStart()
+			return m, nil
+		}
+		m.updateCompletion()
+		return m, nil
+	case "delete":
+		m.ed.del()
+		return m, nil
+	case "ctrl+w", "alt+backspace":
+		m.ed.deleteWord()
+		m.updateCompletion()
+		return m, nil
+	case "ctrl+u":
+		m.ed.deleteToLineStart()
+		return m, nil
+
+	// The arrows run off the end of a block into the next one, so the whole
+	// page reads as one piece of text.
+	case "left":
+		if m.ed.atStart() && m.cur > 0 {
+			m.moveCursor(-1)
+			return m, nil // lands at the end of the block above
+		}
+		m.ed.left()
+		return m, nil
+	case "right":
+		if m.ed.atEnd() && m.cur+1 < len(m.rows) {
+			m.moveCursor(1)
+			if m.ed != nil {
+				m.ed.cur = 0
+			}
+			return m, nil
+		}
+		m.ed.right()
+		return m, nil
+	case "home", "ctrl+a":
+		m.ed.home()
+		return m, nil
+	case "end", "ctrl+e":
+		m.ed.end()
+		return m, nil
+	case "up":
+		if !m.ed.up() {
+			m.moveCursor(-1)
+		}
+		return m, nil
+	case "down":
+		if !m.ed.down() {
+			m.moveCursor(1)
+		}
+		return m, nil
+	}
+
+	if msg.Type == tea.KeyRunes {
+		m.ed.insert(string(msg.Runes))
+		m.updateCompletion()
+		return m, nil
+	}
+	if k == " " {
+		m.ed.insert(" ")
+		m.updateCompletion()
+	}
+	return m, nil
+}
+
+// moveCursor goes to another row, writing the block being left first if it
+// was changed. The editor follows the cursor: see syncEditor.
+func (m *Model) moveCursor(delta int) {
+	m.leave()
+	m.cur = max(0, min(m.cur+delta, len(m.rows)-1))
+	m.syncEditor()
+}
+
+// reload throws away what is not on disk, so it asks first: a second ctrl+r.
+func (m *Model) reload() {
+	if m.dirty() && !m.pendingR {
+		m.pendingR = true
+		m.status = "your edit is not saved — ctrl+r again to discard it"
+		return
+	}
+	m.pendingR = false
+	m.ed, m.edBlock, m.comp = nil, nil, nil
+	if err := m.reloadFromDisk(); err != nil {
+		m.errMsg = err.Error()
+		return
+	}
+	m.errMsg = ""
+	m.status = "reloaded from disk"
+}
+
+// collapse folds the block under the cursor. On a block with nothing to fold
+// it folds the parent instead and goes there, so ctrl+↑ from deep inside a
+// list closes the list you are in.
+func (m *Model) collapse() {
 	b := m.current()
 	if b == nil {
 		return
@@ -555,29 +787,23 @@ func (m *Model) collapseOrParent() {
 		m.buildRows()
 		return
 	}
-	// Already collapsed or a leaf: step out to the parent.
 	for i := m.cur - 1; i >= 0; i-- {
 		if m.rows[i].depth < m.rows[m.cur].depth {
-			m.cur = i
+			m.moveCursor(i - m.cur)
+			m.collapsed[m.currentPath()] = true
+			m.buildRows()
 			return
 		}
 	}
 }
 
-func (m *Model) expandOrChild() {
+func (m *Model) expand() {
 	b := m.current()
 	if b == nil || len(b.Children) == 0 {
 		return
 	}
-	path := m.currentPath()
-	if m.collapsed[path] {
-		delete(m.collapsed, path)
-		m.buildRows()
-		return
-	}
-	if m.cur+1 < len(m.rows) {
-		m.cur++
-	}
+	delete(m.collapsed, m.currentPath())
+	m.buildRows()
 }
 
 // --- the core ---------------------------------------------------------------
@@ -661,7 +887,7 @@ func (m *Model) fail(err error) {
 	var conflict *store.ErrConflict
 	if asConflict(err, &conflict) || app.Stale(err) {
 		m.stale = true
-		m.errMsg = "file changed on disk — press R to reload (your edit is not saved)"
+		m.errMsg = "file changed on disk — ctrl+r reloads it (your edit is not saved)"
 		return
 	}
 	m.errMsg = err.Error()
@@ -736,75 +962,85 @@ func (m *Model) toggleTask() {
 
 // --- editing ----------------------------------------------------------------
 
-func (m *Model) startInsert(atEnd bool) {
+// attach puts the editor on the block under the cursor, with the caret at a
+// rune offset; a negative one means the end. Every write reloads the file, so
+// the block to type into is whichever one the core put the cursor on, not the
+// one we were holding.
+func (m *Model) attach(caret int) {
 	b := m.current()
 	if b == nil {
+		m.ed, m.edBlock, m.comp = nil, nil, nil
 		return
 	}
-	m.ed = newEditor(b.Text)
-	if !atEnd {
-		m.ed.cur = 0
-	}
 	m.edBlock = b
-	m.mode = modeInsert
+	m.ed = newEditor(b.Text)
+	if caret >= 0 {
+		m.ed.cur = max(0, min(caret, len(m.ed.runes)))
+	}
 	m.comp = nil
 }
 
-// commitInsert folds the editor back into the block and writes the file. The
-// write happens on leaving the block, not on quitting, so the window in which a
-// crash or an external edit can cost anything stays one block wide.
-func (m *Model) commitInsert() {
-	if m.edBlock == nil {
+// syncEditor keeps the one invariant the outliner has: in the outline, the
+// block under the cursor is the block being edited. It runs after every
+// message, so a path that moves the cursor cannot leave the editor behind.
+func (m *Model) syncEditor() {
+	if m.mode != modeOutline || m.doc == nil {
 		return
 	}
-	m.edBlock.Text = m.ed.String()
-	// Always save, even when the text did not change: a block created and left
-	// empty still exists on screen, and what is on screen must be on disk.
-	m.save()
-	m.mode = modeNormal
-	m.ed = nil
-	m.edBlock = nil
-	m.comp = nil
+	b := m.current()
+	if m.ed != nil && m.edBlock == b {
+		return
+	}
+	// The editor is on a block the cursor has left. Every move goes through
+	// leave, so this is a path that forgot to; the text is written rather
+	// than dropped, as long as the block is still part of this file.
+	if m.ed != nil && m.edBlock != nil && m.ed.String() != m.edBlock.Text && m.holds(m.edBlock) {
+		m.leave()
+	}
+	m.attach(-1)
+}
+
+// holds reports whether a block belongs to the document on screen. A reload
+// replaces every block, and writing into one from before it would be writing
+// into nothing.
+func (m *Model) holds(b *markdown.Block) bool {
+	for _, x := range m.doc.Doc.Flatten() {
+		if x == b {
+			return true
+		}
+	}
+	return false
+}
+
+// leave folds the editor back into its block and writes the file if the text
+// changed. The write happens on leaving the block, not on quitting, so the
+// window in which a crash or an external edit can cost anything stays one block
+// wide. Passing through a block without changing it writes nothing, which is
+// what keeps browsing to a day with no file from creating one.
+func (m *Model) leave() {
+	ed, b := m.ed, m.edBlock
+	m.ed, m.edBlock, m.comp = nil, nil, nil
+	if ed != nil && b != nil && ed.String() != b.Text {
+		b.Text = ed.String()
+		m.save()
+		// A longer or shorter block moves every block after it in the file,
+		// and the core addresses blocks by where they start. Re-reading puts
+		// the offsets right, so the next command on a later block is not
+		// refused as stale. A refused save is not re-read: that would throw
+		// the typing away.
+		if !m.stale && m.errMsg == "" {
+			if err := m.reloadFromDisk(); err != nil {
+				m.errMsg = err.Error()
+			}
+		} else {
+			m.buildRows()
+		}
+	}
 	if m.graphDirty {
 		m.graphDirty = false
 		m.refresh()
+		m.buildRows()
 	}
-	m.buildRows()
-}
-
-func (m *Model) newSibling(above bool) {
-	if len(m.rows) > 0 && m.rowKind() != rowBlock {
-		return
-	}
-	b := m.current()
-	// An empty block is already the blank line you were about to make. Opening
-	// a fresh journal and pressing enter should start typing, not leave an
-	// orphaned bullet above the first note.
-	if b != nil && !above && b.Text == "" && len(b.Children) == 0 && len(b.Props) == 0 {
-		m.startInsert(true)
-		return
-	}
-	if !m.ensureOnDisk() {
-		return
-	}
-	var res *app.Result
-	var err error
-	switch {
-	case b == nil:
-		res, err = m.svc.AppendBlock(m.doc.Rel, m.doc.Hash, "")
-	case above:
-		res, err = m.svc.InsertBefore(m.addrOf(b), "")
-	default:
-		// A new block under a block with *visible* children becomes its first
-		// child, which is what an outliner does and what Enter should feel
-		// like. Whether they are visible is the outliner's business, so it
-		// answers that question rather than letting the core guess.
-		res, err = m.svc.InsertAfter(m.addrOf(b), "", m.hasVisibleChildren(b))
-	}
-	if !m.apply(res, err) {
-		return
-	}
-	m.editHere(0)
 }
 
 // hasVisibleChildren answers the one question the core is not allowed to ask,
@@ -813,121 +1049,8 @@ func (m *Model) hasVisibleChildren(b *markdown.Block) bool {
 	return len(b.Children) > 0 && !m.collapsed[m.currentPath()]
 }
 
-// editHere opens the editor on the block under the cursor, with the caret at a
-// rune offset. Every write reloads the file, so the block to type into is
-// whichever one the core put the cursor on, not the one we were holding.
-func (m *Model) editHere(caret int) {
-	b := m.current()
-	if b == nil {
-		m.mode = modeNormal
-		m.ed, m.edBlock, m.comp = nil, nil, nil
-		return
-	}
-	m.edBlock = b
-	m.ed = newEditor(b.Text)
-	m.ed.cur = max(0, min(caret, len(m.ed.runes)))
-	m.mode = modeInsert
-	m.comp = nil
-}
-
-func (m *Model) insertKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
-	switch k {
-	case "esc":
-		m.commitInsert()
-		return m, nil
-	case "ctrl+c":
-		m.commitInsert()
-		m.quitting = true
-		return m, tea.Quit
-
-	case "enter":
-		// Enter ends this block and starts the next one: the dominant action
-		// costs one keypress, and one write — splitting is a single core
-		// operation precisely because this is the key people hold down.
-		before, after := m.ed.split()
-		asChild := m.hasVisibleChildren(m.edBlock)
-		if !m.ensureOnDisk() {
-			return m, nil
-		}
-		if m.apply(m.svc.SplitBlock(m.addrOf(m.edBlock), before, after, asChild)) {
-			m.editHere(0)
-		}
-		return m, nil
-
-	case "alt+enter", "ctrl+j", "shift+enter":
-		m.ed.insert("\n")
-		m.updateCompletion()
-		return m, nil
-
-	case "backspace":
-		if !m.ed.backspace() {
-			m.mergeIntoPrevious()
-			return m, nil
-		}
-		m.updateCompletion()
-		return m, nil
-	case "delete":
-		m.ed.del()
-		return m, nil
-	case "ctrl+w", "alt+backspace":
-		m.ed.deleteWord()
-		m.updateCompletion()
-		return m, nil
-	case "ctrl+u":
-		m.ed.deleteToLineStart()
-		return m, nil
-
-	case "left":
-		m.ed.left()
-		return m, nil
-	case "right":
-		m.ed.right()
-		return m, nil
-	case "home", "ctrl+a":
-		m.ed.home()
-		return m, nil
-	case "end", "ctrl+e":
-		m.ed.end()
-		return m, nil
-	case "up":
-		if !m.ed.up() {
-			m.commitInsert()
-			m.moveCursor(-1)
-			m.startInsert(true)
-		}
-		return m, nil
-	case "down":
-		if !m.ed.down() {
-			m.commitInsert()
-			if m.cur+1 < len(m.rows) {
-				m.moveCursor(1)
-				m.startInsert(true)
-			}
-		}
-		return m, nil
-
-	case "tab":
-		m.structuralWhileTyping(m.svc.Indent)
-		return m, nil
-	case "shift+tab":
-		m.structuralWhileTyping(m.svc.Outdent)
-		return m, nil
-	}
-
-	if msg.Type == tea.KeyRunes {
-		m.ed.insert(string(msg.Runes))
-		m.updateCompletion()
-		return m, nil
-	}
-	if k == " " {
-		m.ed.insert(" ")
-		m.updateCompletion()
-	}
-	return m, nil
-}
-
-// structuralWhileTyping applies a core mutation without leaving INSERT, so Tab
-// still indents mid-sentence. The text has to reach the file first: the core
+// structuralWhileTyping applies a core mutation without leaving the block, so
+// Tab still indents mid-sentence. The text has to reach the file first: the core
 // addresses a block by where it is, and half-typed text lives only here.
 func (m *Model) structuralWhileTyping(fn func(app.Addr) (*app.Result, error)) {
 	caret := m.ed.cur
@@ -936,8 +1059,26 @@ func (m *Model) structuralWhileTyping(fn func(app.Addr) (*app.Result, error)) {
 		return
 	}
 	if m.apply(fn(a)) {
-		m.editHere(caret)
+		m.attach(caret)
 	}
+}
+
+// toggleTaskWhileTyping ticks the block off and keeps the caret on the same
+// character, which has moved by however much the checkbox added or took away.
+func (m *Model) toggleTaskWhileTyping() {
+	caret, before := m.ed.cur, len(m.ed.runes)
+	a, ok := m.commitText()
+	if !ok {
+		return
+	}
+	if !m.apply(m.svc.ToggleTask(a)) {
+		return
+	}
+	after := 0
+	if b := m.current(); b != nil {
+		after = len([]rune(b.Text))
+	}
+	m.attach(caret + after - before)
 }
 
 // commitText writes what is being typed and returns the block's address in the
@@ -953,8 +1094,25 @@ func (m *Model) commitText() (app.Addr, bool) {
 	return m.addrOf(m.edBlock), true
 }
 
+// backspaceAtStart joins the block onto the one above, the way every outliner
+// behaves — which also makes it how an empty block is deleted. The first block
+// has nothing above it, so there an empty one is simply removed.
+func (m *Model) backspaceAtStart() {
+	b := m.edBlock
+	if m.cur == 0 && m.ed.String() == "" && len(b.Children) == 0 && len(m.doc.Doc.Blocks) > 1 {
+		if !m.ensureOnDisk() {
+			return
+		}
+		if m.apply(m.svc.DeleteBlock(m.addrOf(b))) {
+			m.attach(0)
+		}
+		return
+	}
+	m.mergeIntoPrevious()
+}
+
 // mergeIntoPrevious is what backspace at the very start of a block does: join
-// it onto the block above, the way every outliner behaves.
+// it onto the block above.
 func (m *Model) mergeIntoPrevious() {
 	if m.cur == 0 || m.edBlock == nil {
 		return
@@ -969,7 +1127,7 @@ func (m *Model) mergeIntoPrevious() {
 		return
 	}
 	if m.apply(m.svc.MergeIntoPrevious(a)) {
-		m.editHere(at)
+		m.attach(at)
 	}
 }
 
@@ -979,6 +1137,7 @@ func (m *Model) goTo(rel string) {
 	if m.doc != nil && rel == m.doc.Rel {
 		return
 	}
+	m.leave()
 	if m.doc != nil {
 		m.history = append(m.history, m.doc.Rel)
 	}
@@ -989,8 +1148,10 @@ func (m *Model) goTo(rel string) {
 
 func (m *Model) back() {
 	if len(m.history) == 0 {
+		m.status = "nowhere to go back to"
 		return
 	}
+	m.leave()
 	rel := m.history[len(m.history)-1]
 	m.history = m.history[:len(m.history)-1]
 	if err := m.load(rel); err != nil {
@@ -1004,6 +1165,20 @@ func (m *Model) shiftDay(delta int) {
 		day = time.Now()
 	}
 	m.goTo(m.svc.JournalRel(day.AddDate(0, 0, delta)))
+}
+
+// followLinkHere follows a link in the block being typed, which may be one that
+// was typed a moment ago and is not on disk yet.
+func (m *Model) followLinkHere() {
+	caret, rel := 0, m.doc.Rel
+	if m.ed != nil {
+		caret = m.ed.cur
+	}
+	m.leave()
+	m.followLink()
+	if m.doc.Rel == rel && m.mode == modeOutline {
+		m.attach(caret)
+	}
 }
 
 // followLink opens the page a link points at, creating it if this is the first
@@ -1080,23 +1255,64 @@ func (m *Model) snapshot() *app.Lookup {
 	return l
 }
 
+// openPalette is the one place to go from: where you have just been, then
+// today, then every command by name, then every journal and page. Typing
+// narrows all of it at once, so reaching a page you went to five minutes ago
+// is ctrl+p and enter, and a command you use once a month needs no key of its
+// own.
 func (m *Model) openPalette() {
 	l := m.snapshot()
 	if l == nil {
 		return
 	}
-	idx := l.Index()
+	seen := map[string]bool{m.doc.Rel: true}
 	var items []pickItem
-	for _, name := range idx.Journals {
-		items = append(items, pickItem{label: name, detail: "journal",
+	add := func(it pickItem) {
+		if !seen[it.rel] {
+			seen[it.rel] = true
+			items = append(items, it)
+		}
+	}
+	for _, rel := range m.recent {
+		add(pickItem{label: store.Title(rel), detail: "recent", rel: rel})
+	}
+	if today := m.svc.TodayRel(); !seen[today] {
+		add(pickItem{label: store.Title(today), detail: "today", rel: today})
+	}
+	items = append(items, m.commands()...)
+	idx := l.Index()
+	// Newest first: last week's journal is wanted far more often than one
+	// from two years ago.
+	for i := len(idx.Journals) - 1; i >= 0; i-- {
+		name := idx.Journals[i]
+		add(pickItem{label: name, detail: "journal",
 			rel: filepath.Join(store.JournalsDir, name+".md")})
 	}
 	for _, name := range idx.Pages {
-		items = append(items, pickItem{label: name, detail: "page",
+		add(pickItem{label: name, detail: "page",
 			rel: filepath.Join(store.PagesDir, name+".md")})
 	}
-	m.pick = newPicker("open", items)
+	m.pick = newPicker("go to", items)
+	m.pick.creates = true
 	m.mode = modePalette
+}
+
+// commands are what the palette can do besides going somewhere. They are the
+// outliner's own screens and the actions too rare or too destructive to sit on
+// a key; slash commands, which change a block, stay in the block.
+func (m *Model) commands() []pickItem {
+	cmd := func(label, detail string, run func(*Model)) pickItem {
+		return pickItem{label: label, detail: detail, run: run}
+	}
+	return []pickItem{
+		cmd("Agenda", "everything with a deadline", (*Model).openAgenda),
+		cmd("Backlinks", "what links to this page", (*Model).openBacklinks),
+		cmd("Delete block", "the block under the cursor and everything in it", (*Model).deleteBlock),
+		cmd("Reload from disk", "ctrl+r · discards what is not saved", (*Model).reload),
+		cmd("Settings", "", (*Model).openSettings),
+		cmd("Messages", "everything tlog has said", (*Model).openLog),
+		cmd("Help", "F1 · every key", func(m *Model) { m.mode = modeHelp }),
+	}
 }
 
 func (m *Model) openSearch() {
@@ -1128,7 +1344,7 @@ func (m *Model) refreshSearch() {
 func (m *Model) pickerKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 	switch k {
 	case "esc", "ctrl+c":
-		m.mode = modeNormal
+		m.mode = modeOutline
 		m.pick, m.look = nil, nil
 		return m, nil
 	case "up", "ctrl+p":
@@ -1139,9 +1355,19 @@ func (m *Model) pickerKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		item, ok := m.pick.selected()
-		m.mode = modeNormal
+		creates, query := m.pick.creates, strings.TrimSpace(m.pick.query.String())
+		m.mode = modeOutline
 		m.pick, m.look = nil, nil
 		if !ok {
+			// Nothing by that name: going there is how a page is made, the
+			// same as following a [[link]] to it for the first time.
+			if creates && query != "" {
+				m.openLink(markdown.Link{Page: query})
+			}
+			return m, nil
+		}
+		if item.run != nil {
+			item.run(m)
 			return m, nil
 		}
 		if item.link.Page != "" {

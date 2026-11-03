@@ -38,7 +38,7 @@ func (m *Model) agendaKey(k string) (tea.Model, tea.Cmd) {
 	a := m.agenda
 	switch k {
 	case "esc", "q", "ctrl+c", "A":
-		m.mode = modeNormal
+		m.mode = modeOutline
 		m.agenda = nil
 	case "up", "k":
 		a.sel = max(0, a.sel-1)
@@ -76,7 +76,7 @@ func (m *Model) agendaKey(k string) (tea.Model, tea.Cmd) {
 	case "enter":
 		if a.sel < len(a.items) {
 			it := a.items[a.sel]
-			m.mode = modeNormal
+			m.mode = modeOutline
 			m.agenda = nil
 			m.goTo(it.Rel)
 			m.focusOffset(it.Offset)

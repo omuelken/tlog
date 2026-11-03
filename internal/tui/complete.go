@@ -351,6 +351,6 @@ func (m *Model) runCommand() {
 	if !m.apply(res.Result, nil) {
 		return
 	}
-	m.editHere(res.Caret)
+	m.attach(res.Caret)
 	m.status = "/" + cmd.Name
 }

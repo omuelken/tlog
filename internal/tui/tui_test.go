@@ -56,6 +56,27 @@ func typeText(t *testing.T, m *Model, s string) {
 	}
 }
 
+// startWriting picks the caret back up after esc, at the end of the block.
+func startWriting(t *testing.T, m *Model) {
+	t.Helper()
+	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	if m.mode != modeOutline || m.ed == nil {
+		t.Fatal("i did not start writing")
+	}
+}
+
+// command runs something from the palette by name, the way a person would:
+// ctrl+p, a few letters, enter.
+func command(t *testing.T, m *Model, name string) {
+	t.Helper()
+	send(t, m, k(tea.KeyCtrlP))
+	typeText(t, m, name)
+	if it, ok := m.pick.selected(); !ok || it.run == nil {
+		t.Fatalf("no command matching %q in the palette", name)
+	}
+	send(t, m, k(tea.KeyEnter))
+}
+
 func onDisk(t *testing.T, m *Model) string {
 	t.Helper()
 	f, err := m.svc.Store.Read(m.doc.Rel)
@@ -67,21 +88,19 @@ func onDisk(t *testing.T, m *Model) string {
 
 func TestTypingWritesToDisk(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "hello world")
 	send(t, m, k(tea.KeyEsc))
 
 	if got := onDisk(t, m); got != "- hello world\n" {
 		t.Fatalf("got %q", got)
 	}
-	if m.mode != modeNormal {
-		t.Fatal("esc did not leave insert mode")
+	if m.mode != modeMove || m.ed != nil {
+		t.Fatal("esc did not put the caret down")
 	}
 }
 
 func TestEnterStartsANewBlock(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "one")
 	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "two")
@@ -94,7 +113,6 @@ func TestEnterStartsANewBlock(t *testing.T) {
 
 func TestAltEnterStaysInsideTheBlock(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "first")
 	send(t, m, altKey(tea.KeyEnter))
 	typeText(t, m, "second")
@@ -110,7 +128,6 @@ func TestAltEnterStaysInsideTheBlock(t *testing.T) {
 
 func TestEnterSplitsAtTheCursor(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "onetwo")
 	for i := 0; i < 3; i++ {
 		send(t, m, k(tea.KeyLeft))
@@ -124,7 +141,6 @@ func TestEnterSplitsAtTheCursor(t *testing.T) {
 
 func TestTabIndentsAndShiftTabOutdents(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "parent")
 	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "child")
@@ -142,7 +158,6 @@ func TestTabIndentsAndShiftTabOutdents(t *testing.T) {
 
 func TestBackspaceAtStartMergesWithTheBlockAbove(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "one")
 	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "two")
@@ -155,7 +170,6 @@ func TestBackspaceAtStartMergesWithTheBlockAbove(t *testing.T) {
 
 func TestMergeRefusesWhenTheBlockHasChildren(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "a")
 	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "b")
@@ -165,8 +179,8 @@ func TestMergeRefusesWhenTheBlockHasChildren(t *testing.T) {
 	// a / b / c indented under b.
 
 	m.cur = 1
-	m.startInsert(false)
-	send(t, m, k(tea.KeyBackspace))
+	startWriting(t, m)
+	send(t, m, k(tea.KeyHome), k(tea.KeyBackspace))
 	if !strings.Contains(m.status, "outdent") {
 		t.Fatalf("expected a refusal explaining why, got %q", m.status)
 	}
@@ -178,7 +192,6 @@ func TestMergeRefusesWhenTheBlockHasChildren(t *testing.T) {
 
 func TestDeleteBlockRemovesTheSubtree(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "keep")
 	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "drop")
@@ -187,24 +200,29 @@ func TestDeleteBlockRemovesTheSubtree(t *testing.T) {
 	send(t, m, k(tea.KeyTab), k(tea.KeyEsc))
 
 	m.cur = 1
-	typeText(t, m, "dd")
+	command(t, m, "delete block")
 
 	if got := onDisk(t, m); got != "- keep\n" {
 		t.Fatalf("got %q", got)
 	}
 }
 
-func TestSpaceTogglesTheTaskCheckbox(t *testing.T) {
+func TestCtrlDTogglesTheTaskCheckbox(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "buy milk")
-	send(t, m, k(tea.KeyEsc))
 
-	send(t, m, tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}})
+	// Mid-sentence, unsaved: the text goes to disk with the checkbox, and the
+	// caret stays after the word it was after.
+	send(t, m, k(tea.KeyCtrlD))
 	if got := onDisk(t, m); got != "- [ ] buy milk\n" {
 		t.Fatalf("first toggle: %q", got)
 	}
-	send(t, m, tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}})
+	typeText(t, m, "!")
+	if got := m.ed.String(); got != "[ ] buy milk!" {
+		t.Fatalf("the caret moved: %q", got)
+	}
+	send(t, m, k(tea.KeyBackspace))
+	send(t, m, k(tea.KeyCtrlD))
 	if got := onDisk(t, m); got != "- [x] buy milk\n" {
 		t.Fatalf("second toggle: %q", got)
 	}
@@ -212,7 +230,6 @@ func TestSpaceTogglesTheTaskCheckbox(t *testing.T) {
 
 func TestMoveBlockCarriesItsChildren(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "a")
 	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "b")
@@ -230,7 +247,6 @@ func TestMoveBlockCarriesItsChildren(t *testing.T) {
 
 func TestCollapseHidesChildrenWithoutTouchingTheFile(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "parent")
 	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "child")
@@ -238,11 +254,11 @@ func TestCollapseHidesChildrenWithoutTouchingTheFile(t *testing.T) {
 
 	before := onDisk(t, m)
 	m.cur = 0
-	send(t, m, k(tea.KeyLeft))
+	send(t, m, k(tea.KeyCtrlUp))
 	if len(m.rows) != 1 {
 		t.Fatalf("collapse did not hide the child: %d rows", len(m.rows))
 	}
-	send(t, m, k(tea.KeyRight))
+	send(t, m, k(tea.KeyCtrlDown))
 	if len(m.rows) != 2 {
 		t.Fatalf("expand did not restore the child: %d rows", len(m.rows))
 	}
@@ -260,7 +276,6 @@ func TestPageCompletionOffersLinkedAndExistingPages(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "see [[Pro")
 	if m.comp == nil || !m.comp.active {
 		t.Fatal("completion did not open after [[")
@@ -281,7 +296,6 @@ func TestPageCompletionOffersLinkedAndExistingPages(t *testing.T) {
 
 func TestCompletionClosesOnceTheLinkIsClosed(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "[[X]]")
 	if m.comp != nil && m.comp.active {
 		t.Fatal("completion should close once ]] is typed")
@@ -291,12 +305,11 @@ func TestCompletionClosesOnceTheLinkIsClosed(t *testing.T) {
 
 func TestFollowingALinkCreatesThePageAndBackNavigates(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "about [[Rust]]")
 	send(t, m, k(tea.KeyEsc))
 
 	journal := m.doc.Rel
-	typeText(t, m, "gf")
+	send(t, m, k(tea.KeyCtrlG))
 	if m.errMsg != "" {
 		t.Fatal(m.errMsg)
 	}
@@ -304,7 +317,7 @@ func TestFollowingALinkCreatesThePageAndBackNavigates(t *testing.T) {
 		t.Fatalf("did not follow the link, still on %q", m.doc.Rel)
 	}
 
-	send(t, m, k(tea.KeyBackspace))
+	send(t, m, k(tea.KeyCtrlO))
 	if m.doc.Rel != journal {
 		t.Fatalf("back did not return to the journal, on %q", m.doc.Rel)
 	}
@@ -312,12 +325,11 @@ func TestFollowingALinkCreatesThePageAndBackNavigates(t *testing.T) {
 
 func TestBacklinksListsTheReferringBlock(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "about [[Rust]]")
 	send(t, m, k(tea.KeyEsc))
 
-	typeText(t, m, "gf")
-	typeText(t, m, "gb")
+	send(t, m, k(tea.KeyCtrlG))
+	command(t, m, "backlinks")
 
 	if m.mode != modeBacklinks {
 		t.Fatalf("backlinks did not open, status %q", m.status)
@@ -329,7 +341,6 @@ func TestBacklinksListsTheReferringBlock(t *testing.T) {
 
 func TestAnExternalEditIsRefusedRatherThanClobbered(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "mine")
 	send(t, m, k(tea.KeyEsc))
 
@@ -338,9 +349,9 @@ func TestAnExternalEditIsRefusedRatherThanClobbered(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m.startInsert(true)
+	startWriting(t, m)
 	typeText(t, m, " edited")
-	m.commitInsert()
+	m.leave()
 
 	if !m.stale {
 		t.Fatal("the outliner did not notice the file had changed")
@@ -352,15 +363,15 @@ func TestAnExternalEditIsRefusedRatherThanClobbered(t *testing.T) {
 		t.Fatalf("the external edit was clobbered: %q", got)
 	}
 
-	// R reloads — but the edit it would throw away is still only in memory, so
-	// the first press asks rather than discarding it silently.
-	r := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}}
+	// ctrl+r reloads — but the edit it would throw away is still only in
+	// memory, so the first press asks rather than discarding it silently.
+	r := k(tea.KeyCtrlR)
 	m.Update(r)
 	if m.rows[0].block.Text == "theirs" {
-		t.Fatal("R discarded an unsaved edit without asking")
+		t.Fatal("ctrl+r discarded an unsaved edit without asking")
 	}
 	if !strings.Contains(m.status, "again") {
-		t.Fatalf("R gave no warning: %q", m.status)
+		t.Fatalf("ctrl+r gave no warning: %q", m.status)
 	}
 
 	m.Update(r)
@@ -371,9 +382,7 @@ func TestAnExternalEditIsRefusedRatherThanClobbered(t *testing.T) {
 
 func TestMovingBetweenDaysCreatesNoFiles(t *testing.T) {
 	m := newModel(t)
-	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
-	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
-	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	send(t, m, altKey(tea.KeyLeft), altKey(tea.KeyLeft), altKey(tea.KeyRight))
 
 	files, err := m.svc.Store.List()
 	if err != nil {
@@ -389,7 +398,7 @@ func TestSearchFindsBlocksAcrossFiles(t *testing.T) {
 	if _, err := m.svc.AddToPage("Notes", "use sqlite as a disposable cache"); err != nil {
 		t.Fatal(err)
 	}
-	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	send(t, m, k(tea.KeyCtrlF))
 	typeText(t, m, "sqlite")
 	if len(m.pick.filtered) != 1 {
 		t.Fatalf("search results: %+v", m.pick.filtered)
@@ -402,20 +411,19 @@ func TestSearchFindsBlocksAcrossFiles(t *testing.T) {
 
 func TestViewRendersWithoutPanicking(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "a block with [[a link]] and #atag")
 	send(t, m, altKey(tea.KeyEnter))
 	typeText(t, m, "```go")
 	send(t, m, altKey(tea.KeyEnter))
 	typeText(t, m, "x := 1")
 
-	for _, mode := range []mode{modeInsert, modeNormal, modeHelp} {
+	for _, mode := range []mode{modeOutline, modeHelp} {
 		m.mode = mode
 		if out := m.View(); out == "" {
 			t.Fatalf("empty view in mode %v", mode)
 		}
 	}
-	m.mode = modeNormal
+	m.mode = modeOutline
 	m.width, m.height = 20, 6
 	if out := m.View(); out == "" {
 		t.Fatal("empty view at a small size")
@@ -424,7 +432,6 @@ func TestViewRendersWithoutPanicking(t *testing.T) {
 
 func TestCompletionShowsItselfEvenWithNothingToSuggest(t *testing.T) {
 	m := newModel(t) // a fresh notes directory: no pages at all
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "see [[")
 
 	if m.comp == nil || !m.comp.active {
@@ -450,7 +457,6 @@ func TestCompletionHintWhenNothingMatchesThePrefix(t *testing.T) {
 	if err := m.load(m.doc.Rel); err != nil {
 		t.Fatal(err)
 	}
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "[[Zzz")
 	if !strings.Contains(m.View(), "no page by that name yet") {
 		t.Fatalf("expected a hint for an unmatched prefix:\n%s", m.View())
@@ -471,7 +477,6 @@ func TestCompletionSelectsTheBestMatchWhileTyping(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "[[Pro")
 	if m.comp.sel != 0 {
 		t.Fatalf("narrowing the query must re-select the best match, sel=%d in %v", m.comp.sel, m.comp.items)
@@ -496,7 +501,7 @@ func TestLinkedReferencesAppearOnThePage(t *testing.T) {
 	if err := m.load(m.doc.Rel); err != nil {
 		t.Fatal(err)
 	}
-	typeText(t, m, "gf") // follow to the person's page
+	send(t, m, k(tea.KeyCtrlG)) // follow to the person's page
 
 	if m.doc.Rel != "pages/Ada Lovelace.md" {
 		t.Fatalf("on %q", m.doc.Rel)
@@ -512,14 +517,12 @@ func TestLinkedReferencesAppearOnThePage(t *testing.T) {
 
 func TestLinkedReferencesShowTheirChildren(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "[[Ada Lovelace]]")
 	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "agreed the plan")
 	send(t, m, k(tea.KeyTab), k(tea.KeyEsc))
 
-	typeText(t, m, "gg")
-	typeText(t, m, "gf")
+	send(t, m, k(tea.KeyCtrlHome), k(tea.KeyCtrlG))
 	frame := m.View()
 	// The mention is a bare name with the substance underneath it; showing only
 	// the parent would say nothing.
@@ -537,7 +540,7 @@ func TestReferenceRowsNavigateAndAreNotEditable(t *testing.T) {
 		t.Fatal(err)
 	}
 	journal := m.doc.Rel
-	typeText(t, m, "gf")
+	send(t, m, k(tea.KeyCtrlG))
 
 	// Walk down into the sections.
 	before := onDisk(t, m)
@@ -598,9 +601,14 @@ func TestPageHeaderShowsWhatThePageIs(t *testing.T) {
 	if err := m.load(m.doc.Rel); err != nil {
 		t.Fatal(err)
 	}
-	typeText(t, m, "gf")
-	if !strings.Contains(m.View(), "#person") {
-		t.Fatalf("the page does not show what it is:\n%s", m.View())
+	send(t, m, k(tea.KeyCtrlG))
+	if m.doc.Rel != "pages/Ada Lovelace.md" {
+		t.Fatalf("on %q", m.doc.Rel)
+	}
+	// The tag is drawn where it describes something: in the header of the
+	// page it is about, not in every line that mentions her.
+	if header := stripANSI(strings.SplitN(m.View(), "\n", 2)[0]); !strings.Contains(header, "#person") {
+		t.Fatalf("the page does not show what it is: %q", header)
 	}
 }
 
@@ -637,7 +645,6 @@ func TestTagCompletionInsideBrackets(t *testing.T) {
 
 func TestQuotedBlockIsMarkedAsAQuotation(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "> Dear all,")
 	send(t, m, k(tea.KeyEsc))
 
@@ -655,7 +662,6 @@ func TestQuotedBlockIsMarkedAsAQuotation(t *testing.T) {
 
 func TestFencedCodeIsHighlightedInTheOutliner(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "build")
 	send(t, m, altKey(tea.KeyEnter))
 	typeText(t, m, "```go")
@@ -670,7 +676,7 @@ func TestFencedCodeIsHighlightedInTheOutliner(t *testing.T) {
 	}
 	m.cur = 1 // move the selection off the block so it is drawn, not inverted
 	m.cur = 0
-	m.mode = modeNormal
+	m.mode = modeOutline
 	frame := m.View()
 	if !strings.Contains(frame, "func main()") {
 		t.Fatalf("code missing from the frame:\n%s", frame)
@@ -685,10 +691,14 @@ func TestCSVFenceBecomesATableInTheOutliner(t *testing.T) {
 	if _, err := m.svc.AddToday("Fachgebiete\n```csv\nKürzel,Fachgebiet\nBZ,Zahlentheorie\nCH,Topologie\n```"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := m.svc.AddToday("after the table"); err != nil {
+		t.Fatal(err)
+	}
 	if err := m.load(m.doc.Rel); err != nil {
 		t.Fatal(err)
 	}
-	m.cur = 1 // off the block, so it renders rather than inverting
+	// Off the block: the one under the caret shows what is typed, not a table.
+	send(t, m, k(tea.KeyCtrlEnd))
 	frame := m.View()
 
 	for _, want := range []string{"Kürzel", "Fachgebiet", "BZ", "Zahlentheorie", "│", "┼"} {
@@ -704,7 +714,6 @@ func TestCSVFenceBecomesATableInTheOutliner(t *testing.T) {
 
 func TestSlashTodoMakesATask(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "Bericht schreiben /todo")
 	if m.comp == nil || m.comp.cmds == nil {
 		t.Fatal("the slash menu did not open")
@@ -726,7 +735,6 @@ func TestSlashTodoMakesATask(t *testing.T) {
 
 func TestSlashDeadlineWritesAProperty(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "Bot testen /deadline morgen")
 	if m.comp == nil || m.comp.cmds == nil || m.comp.cmds[0].Name != "deadline" {
 		t.Fatalf("deadline not offered: %+v", m.comp)
@@ -758,7 +766,6 @@ func TestSlashDeadlineWritesAProperty(t *testing.T) {
 
 func TestASlashInProseIsNotACommand(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "siehe http://x.test/pfad")
 	if m.comp != nil && m.comp.cmds != nil {
 		t.Fatal("a slash inside a URL opened the command menu")
@@ -775,7 +782,6 @@ func TestASlashInProseIsNotACommand(t *testing.T) {
 
 func TestAnUnknownSlashWordIsLeftAlone(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "/frobnicate")
 	if m.comp != nil && m.comp.cmds != nil {
 		t.Fatal("an unknown command should not hold the menu open")
@@ -788,7 +794,6 @@ func TestAnUnknownSlashWordIsLeftAlone(t *testing.T) {
 
 func TestSlashMenuCanBeDismissed(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "x /todo")
 	send(t, m, k(tea.KeyEsc)) // dismiss the menu
 	if m.comp != nil {
@@ -837,7 +842,6 @@ func TestSlashFileOffersTheShelf(t *testing.T) {
 func TestSlashFileWithNoMatchSaysSo(t *testing.T) {
 	t.Setenv("ATT_DIR", t.TempDir())
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "/file")
 	// Nothing on the shelf, so the command is offered but has nothing to insert.
 	m.comp = &completion{active: true, cmds: []tapp.Command{{Name: "file", Arg: "attachment"}}, sel: 0, start: 0}
@@ -852,7 +856,7 @@ func TestSettingsScreenTogglesAndPersists(t *testing.T) {
 	t.Setenv("TLOG_CONFIG", cfgPath)
 
 	m := newModel(t)
-	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{','}})
+	command(t, m, "settings")
 	if m.mode != modeSettings {
 		t.Fatal("the settings screen did not open")
 	}
@@ -876,7 +880,7 @@ func TestSettingsScreenTogglesAndPersists(t *testing.T) {
 	}
 
 	send(t, m, k(tea.KeyEsc))
-	if m.mode != modeNormal {
+	if m.mode != modeOutline {
 		t.Fatal("esc should leave the settings screen")
 	}
 }
@@ -884,7 +888,7 @@ func TestSettingsScreenTogglesAndPersists(t *testing.T) {
 func TestSettingsScreenEditsAValueAndRefusesNonsense(t *testing.T) {
 	t.Setenv("TLOG_CONFIG", filepath.Join(t.TempDir(), "config.toml"))
 	m := newModel(t)
-	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{','}})
+	command(t, m, "settings")
 
 	for m.settings.items[m.settings.sel].Key != "git.debounce" {
 		send(t, m, k(tea.KeyDown))
@@ -917,7 +921,7 @@ func TestSettingsScreenEditsAValueAndRefusesNonsense(t *testing.T) {
 func TestSettingsSayWhatWillNotTakeEffectYet(t *testing.T) {
 	t.Setenv("TLOG_CONFIG", filepath.Join(t.TempDir(), "config.toml"))
 	m := newModel(t)
-	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{','}})
+	command(t, m, "settings")
 
 	m.applySetting("notes", "~/zettel")
 	if !strings.Contains(m.settings.msg, "next start") {
@@ -933,7 +937,6 @@ func TestAnImpossibleMoveIsSaidQuietly(t *testing.T) {
 	// Outdenting a top-level block is not a failure: nothing broke and nothing
 	// was lost. It belongs in the status line, not in the error line.
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "top")
 	send(t, m, k(tea.KeyEsc))
 	before := onDisk(t, m)
@@ -955,19 +958,19 @@ func TestEnterUnderCollapsedChildrenMakesASibling(t *testing.T) {
 	// the outliner and the app disagreed about a block whose children were
 	// hidden. The adapter that can see the screen decides now.
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "parent")
 	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "child")
 	send(t, m, k(tea.KeyTab), k(tea.KeyEsc))
 
 	m.cur = 0
-	send(t, m, k(tea.KeyLeft)) // collapse: the child is off screen
+	send(t, m, k(tea.KeyCtrlUp)) // collapse: the child is off screen
 	if len(m.rows) != 1 {
 		t.Fatalf("collapse did not hide the child: %d rows", len(m.rows))
 	}
 
-	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+	// Enter picks the caret up at the end of "parent"; the second makes the block.
+	send(t, m, k(tea.KeyEnter), k(tea.KeyEnter))
 	typeText(t, m, "next")
 	send(t, m, k(tea.KeyEsc))
 
@@ -978,14 +981,13 @@ func TestEnterUnderCollapsedChildrenMakesASibling(t *testing.T) {
 
 func TestTabWhileTypingKeepsTheCaretWhereItWas(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "parent")
 	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "child")
 	send(t, m, k(tea.KeyLeft), k(tea.KeyLeft), k(tea.KeyTab))
 
-	if m.mode != modeInsert {
-		t.Fatal("tab left insert mode")
+	if m.ed == nil || m.edBlock != m.current() {
+		t.Fatal("tab left the block")
 	}
 	if m.ed.cur != 3 {
 		t.Fatalf("the caret moved: %d", m.ed.cur)
@@ -1023,7 +1025,6 @@ func externalWrite(t *testing.T, m *Model, rel, body string) {
 
 func TestAnEditMadeElsewhereAppearsWithoutPressingR(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "mine")
 	send(t, m, k(tea.KeyEsc))
 
@@ -1040,12 +1041,11 @@ func TestAnEditMadeElsewhereAppearsWithoutPressingR(t *testing.T) {
 
 func TestTypingSurvivesAChangeUnderneath(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "mine")
 	send(t, m, k(tea.KeyEsc))
 
 	// Mid-word, with the text not yet folded back into the block.
-	m.startInsert(true)
+	startWriting(t, m)
 	typeText(t, m, " half-typed")
 	externalWrite(t, m, m.doc.Rel, "- theirs\n")
 	m.Update(changed(t, m, m.doc.Rel))
@@ -1062,7 +1062,6 @@ func TestOurOwnWriteIsNotAnExternalEdit(t *testing.T) {
 	// The loop has to terminate. Reloading on our own save would fight the
 	// caret on every keystroke.
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "mine")
 	send(t, m, k(tea.KeyEsc))
 
@@ -1078,7 +1077,6 @@ func TestOurOwnWriteIsNotAnExternalEdit(t *testing.T) {
 
 func TestAChangeToAnotherFileRefreshesTheSections(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "a note")
 	send(t, m, k(tea.KeyEsc))
 
@@ -1100,12 +1098,12 @@ func TestAChangeToAnotherFileRefreshesTheSections(t *testing.T) {
 
 func TestAChangeElsewhereWaitsUntilYouStopTyping(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "a note")
 	send(t, m, k(tea.KeyEsc))
 	rows := len(m.rows)
 
-	m.startInsert(true)
+	startWriting(t, m)
+	typeText(t, m, " and more") // mid-word: unsaved typing in the block
 	name := strings.TrimSuffix(filepath.Base(m.doc.Rel), ".md")
 	externalWrite(t, m, "pages/Elsewhere.md", "- see [["+name+"]]\n")
 	m.Update(changed(t, m, "pages/Elsewhere.md"))
@@ -1119,7 +1117,7 @@ func TestAChangeElsewhereWaitsUntilYouStopTyping(t *testing.T) {
 
 	send(t, m, k(tea.KeyEsc))
 	if len(m.rows) <= rows {
-		t.Fatal("leaving insert mode did not catch up")
+		t.Fatal("saving the block did not catch up")
 	}
 	if m.graphDirty {
 		t.Fatal("still marked dirty after catching up")
@@ -1128,7 +1126,6 @@ func TestAChangeElsewhereWaitsUntilYouStopTyping(t *testing.T) {
 
 func TestSlashPropSetsAProperty(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "the meeting /prop status offen")
 	send(t, m, k(tea.KeyEnter)) // the menu is open; enter runs the command
 	send(t, m, k(tea.KeyEsc))
@@ -1147,7 +1144,6 @@ func TestBlockReferenceIsMadeWithDoubleParens(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "see ((lecture")
 	if m.comp == nil || len(m.comp.refs) != 1 {
 		t.Fatalf("no block was offered: %+v", m.comp)
@@ -1176,7 +1172,6 @@ func TestABlockReferenceShowsUpAsABacklink(t *testing.T) {
 	if err := m.load(m.doc.Rel); err != nil {
 		t.Fatal(err)
 	}
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "see ((lecture")
 	send(t, m, k(tea.KeyEnter), k(tea.KeyEsc))
 
@@ -1195,7 +1190,6 @@ func TestABlockReferenceShowsUpAsABacklink(t *testing.T) {
 
 func TestParensInProseAreNotAReference(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "a function call f((x))")
 	if m.comp != nil && m.comp.refs != nil {
 		t.Fatal("closed parens opened the reference menu")
@@ -1219,12 +1213,10 @@ func TestALinkByAliasOpensThePageItNames(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "lunch with [[Ada]]")
-	send(t, m, k(tea.KeyEsc))
 
-	// gf follows the link under the cursor.
-	typeText(t, m, "gf")
+	// ctrl+g follows the link in the block, saved or not.
+	send(t, m, k(tea.KeyCtrlG))
 	if m.doc.Rel != "pages/Ada Lovelace.md" {
 		t.Fatalf("[[Ada]] went to %q", m.doc.Rel)
 	}
@@ -1305,7 +1297,7 @@ func TestTheBlockUnderTheCaretStillShowsTheReferenceItself(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.cur = 0
-	m.startInsert(true)
+	m.attach(-1)
 
 	out := stripANSI(strings.Join(m.renderRow(m.rows[0], true, true), "\n"))
 	if !strings.Contains(out, "#^") {
@@ -1405,7 +1397,6 @@ func TestTheWholeRoundTrip(t *testing.T) {
 	if err := m.load(m.doc.Rel); err != nil {
 		t.Fatal(err)
 	}
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "see ((lecture")
 	send(t, m, k(tea.KeyEnter), k(tea.KeyEsc))
 
@@ -1443,9 +1434,9 @@ func TestAgendaListsWhatIsDueAndGoesThere(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	command(t, m, "agenda")
 	if m.mode != modeAgenda {
-		t.Fatal("A did not open the agenda")
+		t.Fatal("the palette did not open the agenda")
 	}
 	if len(m.agenda.items) != 1 || !strings.Contains(m.agenda.items[0].Text, "book the room") {
 		t.Fatalf("got %+v", m.agenda.items)
@@ -1457,7 +1448,7 @@ func TestAgendaListsWhatIsDueAndGoesThere(t *testing.T) {
 
 	// Enter goes to the block itself.
 	send(t, m, k(tea.KeyEnter))
-	if m.mode != modeNormal {
+	if m.mode != modeOutline {
 		t.Fatal("enter did not leave the agenda")
 	}
 	if m.doc.Rel != rel {
@@ -1477,7 +1468,7 @@ func TestAgendaTicksOffWithoutLeaving(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	command(t, m, "agenda")
 	send(t, m, tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}})
 
 	f, err := m.svc.Store.Read(rel)
@@ -1500,7 +1491,6 @@ func TestAgendaTicksOffWithoutLeaving(t *testing.T) {
 
 func TestMessagesAreKeptRatherThanReplaced(t *testing.T) {
 	m := newModel(t)
-	send(t, m, k(tea.KeyEnter))
 	typeText(t, m, "top")
 	send(t, m, k(tea.KeyEsc))
 
@@ -1510,15 +1500,14 @@ func TestMessagesAreKeptRatherThanReplaced(t *testing.T) {
 	if !strings.Contains(first, "top level") {
 		t.Fatalf("nothing was said: %q", first)
 	}
-	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
-	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	command(t, m, "delete block")
 	if m.status == first {
 		t.Fatal("the second message did not replace the first on screen")
 	}
 
-	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'M'}})
+	command(t, m, "messages")
 	if m.mode != modeLog {
-		t.Fatal("M did not open the log")
+		t.Fatal("the palette did not open the log")
 	}
 	out := stripANSI(m.logView())
 	if !strings.Contains(out, "top level") {
@@ -1530,5 +1519,202 @@ func TestMessagesAreKeptRatherThanReplaced(t *testing.T) {
 	// Newest first: what you came to read is the last thing said.
 	if strings.Index(out, "git has") > strings.Index(out, "top level") {
 		t.Fatalf("oldest first: %q", out)
+	}
+}
+
+// --- one mode -----------------------------------------------------------------
+//
+// The block under the cursor is always the one being typed into. These pin the
+// promises that makes: typing needs no key first, moving off a block keeps what
+// was typed, and moving through one that was not touched writes nothing.
+
+func TestMovingOffABlockKeepsWhatWasTyped(t *testing.T) {
+	m := treeModel(t, "- one\n\n- two\n")
+	typeText(t, m, "!")
+	send(t, m, k(tea.KeyDown))
+	if got := onDisk(t, m); got != "- one!\n\n- two\n" {
+		t.Fatalf("got %q", got)
+	}
+	if m.edBlock != m.current() || m.ed.String() != "two" {
+		t.Fatalf("the editor did not follow the cursor: %q", m.ed.String())
+	}
+}
+
+func TestPassingThroughBlocksWritesNothing(t *testing.T) {
+	m := newModel(t)
+	send(t, m, k(tea.KeyDown), k(tea.KeyUp), k(tea.KeyEsc), k(tea.KeyLeft), k(tea.KeyRight))
+	files, err := m.svc.Store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 {
+		t.Fatalf("looking at an empty day wrote files: %v", files)
+	}
+}
+
+func TestArrowsRunOnIntoTheNextBlock(t *testing.T) {
+	m := treeModel(t, "- one\n\n- two\n")
+	// The caret starts at the end of "one"; right crosses into "two".
+	send(t, m, k(tea.KeyRight))
+	if m.cur != 1 || m.ed.cur != 0 {
+		t.Fatalf("right did not cross into the next block: row %d caret %d", m.cur, m.ed.cur)
+	}
+	send(t, m, k(tea.KeyLeft))
+	if m.cur != 0 || m.ed.cur != len("one") {
+		t.Fatalf("left did not cross back to the end: row %d caret %d", m.cur, m.ed.cur)
+	}
+}
+
+func TestBackspaceOnAnEmptyBlockRemovesIt(t *testing.T) {
+	m := treeModel(t, "- one\n\n- two\n")
+	send(t, m, k(tea.KeyEnter)) // a fresh empty block after "one"
+	send(t, m, k(tea.KeyBackspace))
+	if got := onDisk(t, m); got != "- one\n\n- two\n" {
+		t.Fatalf("got %q", got)
+	}
+	if m.cur != 0 || m.ed.cur != len("one") {
+		t.Fatalf("the caret should be back at the end of one: row %d caret %d", m.cur, m.ed.cur)
+	}
+
+	// The first block has nothing to join onto, so an empty one just goes.
+	m = treeModel(t, "-\n\n- two\n")
+	send(t, m, k(tea.KeyBackspace))
+	if got := onDisk(t, m); got != "- two\n" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestOpeningSomethingOverThePageWritesTheBlockFirst(t *testing.T) {
+	m := newModel(t)
+	typeText(t, m, "half a thought")
+	send(t, m, k(tea.KeyCtrlP))
+	if got := onDisk(t, m); got != "- half a thought\n" {
+		t.Fatalf("the palette opened over unsaved typing: %q", got)
+	}
+	send(t, m, k(tea.KeyEsc))
+	if m.mode != modeOutline || m.ed == nil {
+		t.Fatal("closing the palette did not put the editor back")
+	}
+}
+
+func TestThePaletteOpensOnWhereYouHaveBeen(t *testing.T) {
+	m := newModel(t)
+	for _, p := range []string{"Alpha", "Beta", "Gamma"} {
+		if _, err := m.svc.AddToPage(p, "x"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m.goTo("pages/Gamma.md")
+	m.goTo("pages/Alpha.md")
+
+	send(t, m, k(tea.KeyCtrlP))
+	got := []string{m.pick.filtered[0].label, m.pick.filtered[1].label}
+	if got[0] != "Gamma" || m.pick.filtered[0].detail != "recent" {
+		t.Fatalf("the last page visited should come first, got %v", got)
+	}
+	// The page you are on is not somewhere to go.
+	for _, it := range m.pick.filtered {
+		if it.rel == "pages/Alpha.md" {
+			t.Fatal("the current page is offered")
+		}
+	}
+	send(t, m, k(tea.KeyEnter))
+	if m.doc.Rel != "pages/Gamma.md" {
+		t.Fatalf("ctrl+p enter did not go back: on %q", m.doc.Rel)
+	}
+}
+
+func TestThePaletteMakesAPageThatDoesNotExist(t *testing.T) {
+	m := newModel(t)
+	send(t, m, k(tea.KeyCtrlP))
+	typeText(t, m, "Zebra Crossing Notes")
+	if len(m.pick.filtered) != 0 {
+		t.Fatalf("expected nothing to match: %+v", m.pick.filtered)
+	}
+	send(t, m, k(tea.KeyEnter))
+	if m.doc.Rel != "pages/Zebra Crossing Notes.md" {
+		t.Fatalf("on %q", m.doc.Rel)
+	}
+	typeText(t, m, "first line")
+	send(t, m, k(tea.KeyEsc))
+	if got := onDisk(t, m); got != "- first line\n" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// --- moving -------------------------------------------------------------------
+//
+// Writing is where the outliner opens; esc puts the caret down and turns the
+// letters into commands. These pin that the two never leak into each other.
+
+func runeKey(r rune) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}} }
+
+func TestEscSavesAndLettersThenMoveRatherThanType(t *testing.T) {
+	m := treeModel(t, "- one\n\n- two\n\n- three\n")
+	typeText(t, m, "!")
+	send(t, m, k(tea.KeyEsc))
+	if got := onDisk(t, m); got != "- one!\n\n- two\n\n- three\n" {
+		t.Fatalf("esc did not save: %q", got)
+	}
+
+	send(t, m, runeKey('j'), runeKey('j'), runeKey('k'))
+	if m.cur != 1 {
+		t.Fatalf("j j k should land on the second block, on row %d", m.cur)
+	}
+	if got := onDisk(t, m); got != "- one!\n\n- two\n\n- three\n" {
+		t.Fatalf("moving typed into the file: %q", got)
+	}
+
+	send(t, m, runeKey('x'))
+	if got := onDisk(t, m); got != "- one!\n\n- [ ] two\n\n- three\n" {
+		t.Fatalf("x did not make a task of the highlighted block: %q", got)
+	}
+
+	// Typed quickly, both d's can arrive as one key.
+	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("dd")})
+	if got := onDisk(t, m); got != "- one!\n\n- three\n" {
+		t.Fatalf("dd did not delete it: %q", got)
+	}
+
+	// Enter picks the caret back up, at the end of whatever is highlighted.
+	send(t, m, k(tea.KeyEnter))
+	if m.mode != modeOutline || m.ed == nil {
+		t.Fatal("enter did not start writing")
+	}
+	typeText(t, m, "?")
+	send(t, m, k(tea.KeyEsc))
+	if got := onDisk(t, m); !strings.Contains(got, "- three?\n") {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestSingleLettersGoPlaces(t *testing.T) {
+	m := newModel(t)
+	if _, err := m.svc.AddToPage("Ada Lovelace", "the first programmer"); err != nil {
+		t.Fatal(err)
+	}
+	today := m.doc.Rel
+	m.goTo("pages/Ada Lovelace.md")
+	send(t, m, k(tea.KeyEsc))
+
+	send(t, m, runeKey('t'))
+	if m.doc.Rel != today {
+		t.Fatalf("t did not go to today: %q", m.doc.Rel)
+	}
+	send(t, m, runeKey('b'))
+	if m.doc.Rel != "pages/Ada Lovelace.md" {
+		t.Fatalf("b did not go back: %q", m.doc.Rel)
+	}
+	send(t, m, runeKey('p'))
+	if m.mode != modePalette || m.pick.filtered[0].rel != today {
+		t.Fatalf("p did not open the palette on the recent page: %+v", m.pick)
+	}
+	send(t, m, k(tea.KeyEnter))
+	if m.doc.Rel != today {
+		t.Fatalf("p enter did not go there: %q", m.doc.Rel)
+	}
+	// Arriving somewhere by the palette is arriving to write.
+	if m.mode != modeOutline {
+		t.Fatal("the palette did not return to writing")
 	}
 }

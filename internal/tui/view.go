@@ -92,14 +92,11 @@ func (m *Model) header() string {
 		}
 	}
 	right := ""
-	switch m.mode {
-	case modeInsert:
-		right = styleTodo.Render("INSERT")
-	default:
-		right = styleMuted.Render("NORMAL")
+	if m.mode == modeMove {
+		right = styleTodo.Render("MOVE")
 	}
 	if m.stale {
-		right = styleError.Render("STALE") + " " + right
+		right = strings.TrimSpace(styleError.Render("STALE") + " " + right)
 	}
 	return pad(left, right, m.width)
 }
@@ -110,13 +107,13 @@ func (m *Model) footer() string {
 		return styleError.Render(m.errMsg)
 	case m.status != "":
 		return styleMuted.Render(m.status)
-	case m.mode == modeInsert:
-		return styleMuted.Render("esc done · enter new block · alt+enter newline · tab indent · [[ links")
+	case m.rowKind() != rowBlock:
+		return styleMuted.Render("enter open · ↑↓ move · these live on other pages and are not edited here")
+	case m.mode == modeMove:
+		return styleMuted.Render("enter write · j k move · p go to · / search · t today · b back · g follow · [ ] days · x task · dd delete · z fold · ? keys · q quit")
 	default:
-		if m.rowKind() != rowBlock {
-			return styleMuted.Render("enter open · ↑↓ move · these live on other pages and are not edited here")
-		}
-		return styleMuted.Render("? help · enter new block · i edit · tab/shift+tab indent · ctrl+p open · / search · A agenda · q quit")
+		// Typing needs no reminding; getting somewhere does.
+		return styleMuted.Render("esc to move around · ctrl+p go to · ctrl+f search · F1 keys")
 	}
 }
 
@@ -127,7 +124,7 @@ func (m *Model) bodyLines() ([]string, int) {
 	cursorLine := 0
 
 	for i, r := range m.rows {
-		editing := m.mode == modeInsert && m.edBlock == r.block
+		editing := m.ed != nil && m.edBlock == r.block
 		start := len(out)
 		out = append(out, m.renderRow(r, i == m.cur, editing)...)
 		if i == m.cur {
@@ -341,7 +338,7 @@ func (m *Model) renderEditLine(l string, idx int) string {
 
 func (m *Model) completionLines(indent string) []string {
 	if len(m.comp.items) == 0 {
-		hint := "no page by that name yet — finish typing and press gf to create it"
+		hint := "no page by that name yet — finish typing and press ctrl+g to create it"
 		if m.comp.prefix == "" {
 			hint = "type a page name · no pages yet"
 		}
@@ -496,37 +493,44 @@ func (m *Model) pickerView() string {
 	for ; shown < h; shown++ {
 		b.WriteByte('\n')
 	}
-	b.WriteString(styleMuted.Render("enter open · esc cancel"))
+	hint := "enter open · esc cancel"
+	if m.pick.creates {
+		hint = "enter open · a name that matches nothing makes that page · esc cancel"
+	}
+	b.WriteString(styleMuted.Render(hint))
 	return b.String()
 }
 
 func (m *Model) helpView() string {
 	rows := [][2]string{
-		{"↑ ↓ / j k", "move between blocks"},
-		{"← → / h l", "collapse · expand, or step out and in"},
-		{"enter", "new block below, and start typing"},
-		{"i / e", "edit this block"},
+		{"", "Writing — where tlog opens. Typing types into the block under the caret."},
+		{"enter", "new block — at the caret, so it splits a block in two"},
 		{"alt+enter", "newline inside a block (also ctrl+j)"},
 		{"tab / shift+tab", "indent · outdent"},
 		{"alt+↑ / alt+↓", "move the block and its children"},
-		{"space", "toggle the task checkbox"},
-		{"dd", "delete the block and its children"},
-		{"[[", "page autocomplete, while typing"},
-		{"/", "commands: /todo, /deadline fr, /table, /code …"},
-		{"gf", "follow the [[link]] in this block"},
-		{"gb", "what links here, as a list"},
-		{"enter", "on a reference below the outline: jump to it"},
-		{"ctrl+p", "open a journal or page"},
+		{"backspace", "at the start of a block: join it to the one above"},
+		{"↑ ↓ ← →", "move; they run on into the next block"},
+		{"esc", "stop writing and move around"},
+		{"", ""},
+		{"", "Moving — after esc. The block is highlighted and letters are commands."},
+		{"enter / i", "write here"},
+		{"j k / ↑ ↓", "move between blocks"},
+		{"p", "go to: recent pages first, then commands, journals, pages"},
 		{"/", "search every block"},
 		{"t", "today's journal"},
+		{"b", "back to where you came from"},
+		{"g", "follow the [[link]] in this block, or open the row below"},
 		{"[ / ]", "previous · next day"},
-		{"backspace", "back to where you came from"},
-		{"R", "reload from disk after an external edit"},
-		{"g g / G", "first · last block"},
-		{"A", "agenda: everything with a deadline"},
-		{"M", "messages: everything tlog has said"},
-		{",", "settings"},
+		{"x", "toggle the task checkbox"},
+		{"dd", "delete the block and everything in it"},
+		{"z / h l", "fold · unfold"},
+		{"tab / alt+↑↓", "indent · move the block, as when writing"},
+		{"a", "agenda: everything with a deadline"},
 		{"q", "quit"},
+		{"", ""},
+		{"", "In either: ctrl+p go to · ctrl+f search · ctrl+t today · ctrl+o back ·"},
+		{"", "alt+←→ days · ctrl+g follow · ctrl+d task · ctrl+↑↓ fold · ctrl+r reload"},
+		{"[[  ((  /", "while writing: page · block reference · commands like /todo"},
 	}
 	var b strings.Builder
 	b.WriteString(styleTitle.Render("tlog") + "\n\n")
