@@ -1130,7 +1130,7 @@ func TestSlashPropSetsAProperty(t *testing.T) {
 	send(t, m, k(tea.KeyEnter)) // the menu is open; enter runs the command
 	send(t, m, k(tea.KeyEsc))
 
-	if got := onDisk(t, m); got != "- the meeting \n  status:: offen\n" {
+	if got := onDisk(t, m); got != "- the meeting\n  status:: offen\n" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -1716,5 +1716,51 @@ func TestSingleLettersGoPlaces(t *testing.T) {
 	// Arriving somewhere by the palette is arriving to write.
 	if m.mode != modeOutline {
 		t.Fatal("the palette did not return to writing")
+	}
+}
+
+// --- dates ----------------------------------------------------------------------
+
+func TestAtOffersDaysAndWritesTheDate(t *testing.T) {
+	m := newModel(t)
+	typeText(t, m, "call the printer @")
+	if m.comp == nil || m.comp.dates == nil || m.comp.dates[0].Phrase != "today" {
+		t.Fatalf("@ did not offer the usual days: %+v", m.comp)
+	}
+	typeText(t, m, "in 3")
+	if len(m.comp.dates) != 3 || m.comp.dates[0].Phrase != "in 3 days" {
+		t.Fatalf("@in 3 offered %+v", m.comp.dates)
+	}
+	send(t, m, k(tea.KeyEnter))
+	want := "[[" + time.Now().AddDate(0, 0, 3).Format("2006-01-02") + "]]"
+	if got := m.ed.String(); got != "call the printer "+want {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestAnAtThatIsNotADateIsJustText(t *testing.T) {
+	m := newModel(t)
+	typeText(t, m, "mail a@b.ch and @zzz")
+	if m.comp != nil && m.comp.active {
+		t.Fatalf("a menu opened: %+v", m.comp)
+	}
+	send(t, m, k(tea.KeyEnter)) // a new block, not an accepted suggestion
+	send(t, m, k(tea.KeyEsc))
+	if got := onDisk(t, m); !strings.HasPrefix(got, "- mail a@b.ch and @zzz\n") {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestDeadlineOffersTheSameDays(t *testing.T) {
+	m := newModel(t)
+	typeText(t, m, "send the slides /deadline ")
+	if m.comp == nil || m.comp.dates == nil {
+		t.Fatalf("/deadline did not offer days: %+v", m.comp)
+	}
+	send(t, m, k(tea.KeyDown), k(tea.KeyEnter)) // tomorrow
+	send(t, m, k(tea.KeyEsc))
+	want := "Deadline:: " + time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	if got := onDisk(t, m); !strings.Contains(got, want) || strings.Contains(got, "/deadline") {
+		t.Fatalf("got %q", got)
 	}
 }

@@ -848,6 +848,19 @@ function linkPrefix(before) {
   return { kind: "page", prefix: rest };
 }
 
+// The trigger for a date is an @ that starts a word, as in the outliner: "@"
+// alone offers the usual days, "@fr" Friday, "@in 3" three days or weeks.
+// Anything the core cannot make a date of closes the menu, so an address like
+// a@b.ch is just text.
+function atPrefix(before) {
+  const i = before.lastIndexOf("@");
+  if (i < 0) return null;
+  if (i > 0 && !/[ \t\n(]/.test(before[i - 1])) return null;
+  const rest = before.slice(i + 1);
+  if (rest.includes("\n") || rest.length > 24) return null;
+  return { kind: "date", prefix: rest };
+}
+
 // The trigger for a block reference is an unclosed (( to the left of the caret.
 // (( is free in the dialect and is what Logseq uses, so the habit carries; a
 // closed pair is ordinary prose, so f((x)) opens nothing.
@@ -878,6 +891,18 @@ async function updateCompletion(el) {
         }
       }
 
+      // A date command shows the days themselves, the same quick pick as @,
+      // with the calendar following whichever is chosen.
+      if (cmds.length === 1 && cmds[0].arg === "date") {
+        const dates = await call(() => api().DateChoices(slash.arg));
+        if (dates && dates.length) {
+          const s = completion && completion.dates ? Math.min(completion.sel, dates.length - 1) : 0;
+          completion = { kind: "cmd", cmds, dates, sel: s, el, ...slash };
+          completion.cal = await call(() => api().Month(dates[s].iso));
+          return drawCompletion();
+        }
+      }
+
       let date = null;
       if (cmds[sel] && cmds[sel].arg === "date") {
         date = await call(() => api().DatePreview(slash.arg));
@@ -903,6 +928,17 @@ async function updateCompletion(el) {
     return drawCompletion();
   }
 
+  const at = atPrefix(before);
+  if (at) {
+    const dates = await call(() => api().DateChoices(at.prefix));
+    if (dates && dates.length) {
+      const s = completion && completion.kind === "date" ? Math.min(completion.sel, dates.length - 1) : 0;
+      completion = { ...at, dates, items: dates, sel: s, el };
+      completion.cal = await call(() => api().Month(dates[s].iso));
+      return drawCompletion();
+    }
+  }
+
   const trigger = linkPrefix(before);
   if (!trigger) return hideCompletion();
 
@@ -921,6 +957,35 @@ async function updateCompletion(el) {
 function drawCompletion() {
   const box = $("complete");
   box.innerHTML = "";
+
+  if (completion.dates) {
+    const list = document.createElement("div");
+    list.className = "cmds dates";
+    completion.dates.forEach((d, i) => {
+      const item = document.createElement("div");
+      item.className = "item" + (i === completion.sel ? " sel" : "");
+      item.innerHTML =
+        `<b>${escapeHTML(d.phrase)}</b> <span class="t-${escapeHTML(d.state)}">${escapeHTML(d.short)}</span>` +
+        `<span class="hint"> ${escapeHTML(d.label)}</span>`;
+      item.onmousedown = (e) => {
+        e.preventDefault();
+        completion.sel = i;
+        if (completion.kind === "cmd") runCommand();
+        else acceptDate();
+      };
+      list.appendChild(item);
+    });
+    box.appendChild(list);
+    if (completion.cal) {
+      const cal = document.createElement("div");
+      cal.className = "datepick";
+      cal.innerHTML = calendarHTML(completion.cal);
+      box.appendChild(cal);
+    }
+    placeCompletion(box);
+    box.hidden = false;
+    return;
+  }
 
   if (completion.kind === "cmd" && completion.files) {
     const list = document.createElement("div");
@@ -1051,6 +1116,22 @@ function handleCompletionKey(e, el) {
     hideCompletion();
     return true;
   }
+  if (completion.dates) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const d = e.key === "ArrowDown" ? 1 : -1;
+      completion.sel = Math.max(0, Math.min(completion.sel + d, completion.dates.length - 1));
+      moveDateCalendar();
+      return true;
+    }
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      if (completion.kind === "cmd") runCommand();
+      else acceptDate();
+      return true;
+    }
+    return false;
+  }
   if (completion.kind === "cmd") {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
@@ -1089,6 +1170,27 @@ function handleCompletionKey(e, el) {
   return false;
 }
 
+// moveDateCalendar redraws the date menu with the calendar showing the day now
+// chosen, so moving through the list is confirmed at a glance.
+async function moveDateCalendar() {
+  const c = completion;
+  drawCompletion();
+  const cal = await call(() => api().Month(c.dates[c.sel].iso));
+  if (completion !== c) return; // moved on while the month was fetched
+  c.cal = cal;
+  drawCompletion();
+}
+
+// acceptDate writes the chosen day as a link to its journal — what /date
+// writes — in place of the @ and whatever was typed after it.
+function acceptDate() {
+  const c = completion;
+  const d = c && c.dates && c.dates[c.sel];
+  hideCompletion();
+  if (!d) return;
+  replaceBefore(c.prefix.length + 1, "[[" + d.iso + "]]");
+}
+
 // replaceBefore swaps the n characters before the caret for text, as one edit
 // the browser can undo. Completions that append can just insert; a block
 // reference replaces what was typed, because (( is not part of what is stored.
@@ -1125,9 +1227,14 @@ async function acceptCompletion() {
 async function runCommand() {
   const c = completion;
   if (!c || !c.cmds || !c.cmds.length) return hideCompletion();
-  // When the menu was the shelf, the selection names the file.
-  const cmd = c.files ? c.cmds[0] : c.cmds[c.sel];
-  const arg = c.files ? (c.files[c.sel] || {}).name || c.arg : c.arg;
+  // When the menu was the shelf or the days, the selection names the file
+  // or the date and the command is the one that was typed.
+  const cmd = c.files || c.dates ? c.cmds[0] : c.cmds[c.sel];
+  const arg = c.files
+    ? (c.files[c.sel] || {}).name || c.arg
+    : c.dates
+      ? (c.dates[c.sel] || {}).iso || c.arg
+      : c.arg;
   const el = c.el;
   const text = raw(el);
   const from = c.start;

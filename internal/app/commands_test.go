@@ -236,12 +236,12 @@ func TestPropCommandSetsAndRemovesAProperty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := body(t, s, rel); got != "- the meeting \n  status:: offen\n" {
+	if got := body(t, s, rel); got != "- the meeting\n  status:: offen\n" {
 		t.Fatalf("got %q", got)
 	}
 	// The command itself is gone from the text, like every other one.
 	d, _ := s.Load(rel)
-	if b := d.Doc.FindByOffset(res.Offset); b == nil || b.Text != "the meeting " {
+	if b := d.Doc.FindByOffset(res.Offset); b == nil || b.Text != "the meeting" {
 		t.Fatalf("the slash stayed behind: %+v", b)
 	}
 
@@ -249,7 +249,7 @@ func TestPropCommandSetsAndRemovesAProperty(t *testing.T) {
 	if _, err := s.RunCommand(addrOf(t, s, rel, 0), "prop", "status", "the meeting ", 12, 12); err != nil {
 		t.Fatal(err)
 	}
-	if got := body(t, s, rel); got != "- the meeting \n" {
+	if got := body(t, s, rel); got != "- the meeting\n" {
 		t.Fatalf("the property was not removed: %q", got)
 	}
 }

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -26,7 +27,11 @@ type completion struct {
 	// refs is the (( menu: blocks to point at. Accepting one gives that block
 	// a durable name, which is a write to another file, so it is kept here
 	// rather than reduced to a string like the other candidates.
-	refs  []tapp.BlockRef
+	refs []tapp.BlockRef
+	// dates is the quick pick for a date: after @, or as the argument of
+	// /date and /deadline. Accepting one writes its ISO form, whatever was
+	// typed to find it.
+	dates []tapp.DateChoice
 	arg   string
 	start int // rune offset where the "/" sits
 	// closing is appended when a candidate is accepted: page names finish the
@@ -43,7 +48,7 @@ const completionLimit = 8
 // updateCompletion re-evaluates the trigger after every keystroke. The trigger
 // is an unclosed [[ to the left of the cursor.
 func (m *Model) updateCompletion() {
-	if m.slashCompletion() || m.refCompletion() {
+	if m.slashCompletion() || m.refCompletion() || m.dateCompletion() {
 		return
 	}
 	prefix, ok := linkPrefix(m.ed.textBefore())
@@ -112,6 +117,61 @@ func (m *Model) refCompletion() bool {
 	}
 	m.comp = &completion{active: true, prefix: prefix, items: items, refs: refs, sel: sel}
 	return true
+}
+
+// dateCompletion opens the date quick pick when an @ starts a word: "@" alone
+// offers the usual days, "@fr" Friday, "@in 3" three days, weeks or months,
+// "@7 nov" the seventh of November. Accepting one writes the date as a link to
+// that day's journal, exactly what /date writes. When nothing typed after the
+// @ could become a date the menu closes and the @ is just a character, so an
+// address like a@b.ch is never interrupted.
+func (m *Model) dateCompletion() bool {
+	prefix, ok := atPrefix(m.ed.textBefore())
+	if !ok {
+		return false
+	}
+	choices := tapp.DateChoices(prefix, completionLimit)
+	if len(choices) == 0 {
+		return false
+	}
+	sel := 0
+	if m.comp != nil && m.comp.dates != nil && m.comp.cmds == nil && m.comp.moved && m.comp.sel < len(choices) {
+		sel = m.comp.sel
+	}
+	m.comp = &completion{active: true, prefix: prefix, items: dateLabels(choices), dates: choices, sel: sel}
+	return true
+}
+
+func dateLabels(choices []tapp.DateChoice) []string {
+	items := make([]string, 0, len(choices))
+	for _, c := range choices {
+		items = append(items, fmt.Sprintf("%-14s %s  %s", c.Phrase, c.Short, styleMuted.Render(c.Label)))
+	}
+	return items
+}
+
+// atPrefix is what has been typed after an @ that starts a word, on this line.
+func atPrefix(before string) (string, bool) {
+	r := []rune(before)
+	i := len(r) - 1
+	for ; i >= 0 && r[i] != '@'; i-- {
+		if r[i] == '\n' || len(r)-i > 24 {
+			return "", false
+		}
+	}
+	if i < 0 || (i > 0 && !strings.ContainsRune(" \t\n(", r[i-1])) {
+		return "", false
+	}
+	return string(r[i+1:]), true
+}
+
+func (m *Model) acceptDate() {
+	if m.comp.sel >= len(m.comp.dates) {
+		m.comp = nil
+		return
+	}
+	m.ed.replaceBefore(len([]rune(m.comp.prefix))+1, "[["+m.comp.dates[m.comp.sel].ISO+"]]")
+	m.comp = nil
 }
 
 // refPrefix is an unclosed (( to the left of the caret.
@@ -187,6 +247,23 @@ func (m *Model) slashCompletion() bool {
 			}
 		}
 		items = append(items, label)
+	}
+
+	// A date command shows the days themselves, the same quick pick as @:
+	// /deadline alone offers today, tomorrow, Friday…, and "/deadline in 3"
+	// narrows it.
+	if len(cmds) == 1 && cmds[0].TakesDate() {
+		if choices := tapp.DateChoices(arg, completionLimit); len(choices) > 0 {
+			sel := 0
+			if m.comp != nil && m.comp.dates != nil && m.comp.sel < len(choices) {
+				sel = m.comp.sel
+			}
+			m.comp = &completion{
+				active: true, items: dateLabels(choices), cmds: cmds, dates: choices,
+				arg: arg, start: start, sel: sel,
+			}
+			return true
+		}
 	}
 
 	// A file command shows the shelf itself: what you are choosing between is
@@ -294,6 +371,8 @@ func (m *Model) completionKey(k string) (bool, tea.Cmd) {
 		switch {
 		case m.comp.cmds != nil:
 			m.runCommand()
+		case m.comp.dates != nil:
+			m.acceptDate()
 		case m.comp.refs != nil:
 			m.acceptRef()
 		default:
@@ -318,7 +397,12 @@ func (m *Model) acceptCompletion() {
 // command and its argument are cut out by the core, so both adapters cut
 // identically.
 func (m *Model) runCommand() {
-	if m.comp == nil || m.comp.sel >= len(m.comp.cmds) || m.edBlock == nil {
+	// The selection indexes the rows shown, which are commands, files on the
+	// shelf or days — not always the commands, of which there may be one.
+	if m.comp == nil || len(m.comp.cmds) == 0 || m.edBlock == nil {
+		return
+	}
+	if rows := max(len(m.comp.items), len(m.comp.cmds)); m.comp.sel >= rows {
 		return
 	}
 	cmd := m.comp.cmds[0]
@@ -327,6 +411,11 @@ func (m *Model) runCommand() {
 		// The menu was the shelf, so the selection names the file.
 		if m.comp.sel < len(m.comp.files) {
 			arg = m.comp.files[m.comp.sel].Name
+		}
+	} else if m.comp.dates != nil {
+		// The menu was the days, so the selection is the date.
+		if m.comp.sel < len(m.comp.dates) {
+			arg = m.comp.dates[m.comp.sel].ISO
 		}
 	} else {
 		cmd = m.comp.cmds[m.comp.sel]

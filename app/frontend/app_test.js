@@ -41,6 +41,7 @@ eval(lift("function linkPrefix"));
 eval(lift("function slashAt"));
 eval(lift("function shouldReload"));
 eval(lift("function refPrefix"));
+eval(lift("function atPrefix"));
 
 let failures = 0;
 function eq(label, got, want) {
@@ -243,6 +244,11 @@ eq("cell contents are still decorated",
 
 // --- the completion trigger -------------------------------------------------
 
+eq("an @ starts a date", atPrefix("call the printer @fr"), { kind: "date", prefix: "fr" });
+eq("an @ alone offers the days", atPrefix("@"), { kind: "date", prefix: "" });
+eq("a date of several words", atPrefix("send it @in 3"), { kind: "date", prefix: "in 3" });
+eq("an address is not a date", atPrefix("mail a@b.ch"), null);
+eq("a newline ends it", atPrefix("@fri\nnext"), null);
 eq("page prefix", linkPrefix("see [[Pro"), { kind: "page", prefix: "Pro" });
 eq("just opened", linkPrefix("see [["), { kind: "page", prefix: "" });
 eq("a closed link does not trigger", linkPrefix("see [[Done]] and"), null);

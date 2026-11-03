@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestResolveLinkOpensOnlyWhatALinkShouldBe(t *testing.T) {
@@ -83,5 +84,49 @@ func TestDroppedFilesReadsWhatTerminalsType(t *testing.T) {
 		if got := DroppedFiles(text); got != nil {
 			t.Errorf("%q was taken for a drop: %q", text, got)
 		}
+	}
+}
+
+func TestADeadlineTypedByHandIsPinnedWhenWritten(t *testing.T) {
+	s := newSvc(t)
+	rel := s.TodayRel()
+	// As if typed in nvim: a relative deadline and a German one.
+	body := "- call the printer\n  due:: tomorrow\n\n- send the slides\n  Deadline:: 24.12.2026\n"
+	if err := s.Store.Write(rel, []byte(body), ""); err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Load(rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Read strictly, "tomorrow" is not a fixed day until it is written down.
+	if _, ok := Deadline(d.Doc.Blocks[0]); ok {
+		t.Fatal("a relative deadline in a file was read as a fixed day")
+	}
+	if got, ok := Deadline(d.Doc.Blocks[1]); !ok || got.Format("2006-01-02") != "2026-12-24" {
+		t.Fatalf("24.12.2026 read as %v %v", got, ok)
+	}
+
+	// Any write through tlog normalizes the file.
+	if _, err := s.Add(rel, "a third block"); err != nil {
+		t.Fatal(err)
+	}
+	f, err := s.Store.Read(rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	if !strings.Contains(string(f.Data), "due:: "+tomorrow) || !strings.Contains(string(f.Data), "Deadline:: 2026-12-24") {
+		t.Fatalf("not normalized: %q", f.Data)
+	}
+}
+
+func TestDateChoicesSayWhatTheyMean(t *testing.T) {
+	got := DateChoices("", 8)
+	if len(got) < 3 || got[0].Phrase != "today" || got[0].ISO != time.Now().Format("2006-01-02") || got[0].Label != "today" {
+		t.Fatalf("got %+v", got)
+	}
+	if got := DateChoices("in 2", 8); len(got) != 3 || got[1].Phrase != "in 2 weeks" {
+		t.Fatalf("got %+v", got)
 	}
 }

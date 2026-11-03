@@ -686,7 +686,7 @@ func (m *Model) helpView() string {
 		{"", ""},
 		{"", "In either: ctrl+p go to · ctrl+f search · ctrl+t today · ctrl+o back ·"},
 		{"", "alt+←→ days · ctrl+g follow · ctrl+d task · ctrl+↑↓ fold · ctrl+r reload"},
-		{"[[  ((  /", "while writing: page · block reference · commands like /todo"},
+		{"[[  ((  /  @", "while writing: page · block reference · /todo… · a date"},
 		{"", ""},
 		{"mouse", "click a block to write there · click a link to open it ·"},
 		{"", "hover a link to see where it goes · click ▸▾ to fold · wheel moves"},

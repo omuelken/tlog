@@ -71,7 +71,7 @@ around with single letters; `enter` picks it back up.
 | `alt+↑` `alt+↓` | move the block and its children |
 | `backspace` | at the start of a block: join it to the one above (an empty one goes) |
 | `↑ ↓ ← →` | move; they run on from one block into the next |
-| `[[` `((` `/` | page · block reference · commands like `/todo`, `/deadline fr` |
+| `[[` `((` `/` `@` | page · block reference · commands like `/todo` · a date, picked |
 | `esc` | stop writing and move around (saves the block) |
 
 **Moving** — after `esc`. The block is highlighted and letters are commands.
@@ -267,18 +267,27 @@ is its effect, never a slash.
 | `/prop status offen` | `status:: offen` on the block; no value removes it |
 | `/alias Ada` | another name this page answers to |
 
-The date argument is typed, not picked. A calendar appears beside the menu
-showing what the shorthand resolved to — confirmation, so a mistyped date is
-caught before it is written, rather than the way you are meant to enter one.
+**Dates have one form and many ways in.** Whatever you type, what is written
+is ISO — `2026-11-07`. `/date`, `/deadline` and **`@`** anywhere in a block open
+the same quick pick: the usual days with nothing typed (today, tomorrow, the
+rest of the working week, next week, end of month), narrowing as you type.
+Enter takes the highlighted one; `@` writes it as `[[2026-11-07]]`, a link to
+that day's journal, like `/date`.
 
 ```
-/deadline fr          friday — and mo tu we th sa su
-/deadline tomorrow    today · tomorrow · yesterday
-/deadline +3d         +3d  +2w  +1m  +1y
-/deadline eow         end of week · eom · eoy
-/deadline 26.9.       the German form, since that is what you would type
-/deadline 2026-10-11  ISO
+@fr  /deadline fr      friday — and mo tu we th sa su
+@tom                   today · tomorrow · yesterday
+@in 3                  in 3 days · in 3 weeks · in 3 months
+@next                  next week (its Monday) · next month (its 1st)
+@7 nov  @nov 7         a month by name, German or English
+@+3d                   +3d  +2w  +1m  +1y
+@26.9.  @2026-10-11    the German form, and ISO
 ```
+
+A deadline typed by hand — `due:: fri` in nvim, `Deadline:: 24.9.` — is
+converted to ISO the next time tlog writes the file, pinned to the day it meant
+when it was written. Until then it is not read as a date at all: a relative
+word in a file would mean a different day every day.
 
 German works too, everywhere a date is read: `morgen`, `übermorgen`,
 `nächsten freitag`, `+1j`, `3t`, and `/fällig` for the command itself. What
@@ -297,7 +306,7 @@ tlog due          # everything open and dated, soonest first
 tlog due -all     # including what is done
 ```
 
-**Agenda** is that same list, from the same call: `A` in the outliner, `⌘⇧A` in
+**Agenda** is that same list, from the same call: `a` in the outliner while moving, `⌘⇧A` in
 the app. Enter or a click goes to the block, and space ticks it off without
 leaving — `a` in the outliner also shows what is already done.
 

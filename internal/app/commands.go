@@ -198,6 +198,15 @@ func (s *Service) RunCommand(a Addr, name, arg, text string, from, to int) (*Com
 		insert = "#"
 	}
 
+	// A command that leaves nothing behind takes the space before it too, so
+	// "slides /deadline fr" becomes "slides", not "slides ". A space is kept
+	// where text follows and needs separating from what came before.
+	if insert == "" {
+		before = strings.TrimRight(before, " \t")
+		if before != "" && after != "" && !strings.HasPrefix(after, " ") && !strings.HasPrefix(after, "\n") {
+			before += " "
+		}
+	}
 	newText := before + insert + after
 	caret := from + len([]rune(insert))
 	switch cmd.Name {
@@ -278,15 +287,66 @@ func isDeadlineKey(k string) bool {
 }
 
 // Deadline reads a block's deadline, whatever case the property was written in.
+//
+// It reads strictly: a relative value typed by hand — "due:: fri" — would mean
+// a different day every time it was read, so it is not a deadline until tlog
+// next writes the file and normalizeDates pins it to the day it meant then.
 func Deadline(b *markdown.Block) (time.Time, bool) {
 	for _, p := range b.Props {
 		if isDeadlineKey(p.Key) {
-			if d, ok := dates.Parse(p.Value, time.Now()); ok {
+			if d, ok := dates.ParseStored(p.Value); ok {
 				return d, true
 			}
 		}
 	}
 	return time.Time{}, false
+}
+
+// normalizeDates writes every deadline in the one form a file holds: ISO.
+// However it was typed — by hand in nvim, "24.9.", "fri", "7. November" — it is
+// converted on the way to disk, and a relative one is resolved against the
+// moment of writing, which is when it was meant. What is not a date is left as
+// it was typed.
+func normalizeDates(d *markdown.Document, now time.Time) {
+	d.Walk(func(b *markdown.Block) bool {
+		for i := range b.Props {
+			if !isDeadlineKey(b.Props[i].Key) {
+				continue
+			}
+			if iso, ok := dates.NormalizeStored(b.Props[i].Value, now); ok {
+				b.Props[i].Value = iso
+			}
+		}
+		return true
+	})
+}
+
+// DateChoice is one entry in a date quick pick, with everything an adapter
+// needs to draw it.
+type DateChoice struct {
+	Phrase string `json:"phrase"` // what it is called: "friday", "in 3 days"
+	ISO    string `json:"iso"`    // what is written
+	Short  string `json:"short"`  // "Fr 07.11."
+	Label  string `json:"label"`  // how far away: "in 4 days"
+	State  string `json:"state"`  // overdue, today, soon, later
+}
+
+// DateChoices is the quick pick for a date being typed: the usual days when
+// nothing is typed yet, narrowing as it is. The outliner's @ menu, the slash
+// menus for /date and /deadline, and the window all draw this one list.
+func DateChoices(input string, limit int) []DateChoice {
+	now := time.Now()
+	var out []DateChoice
+	for _, s := range dates.Suggest(input, now, limit) {
+		out = append(out, DateChoice{
+			Phrase: s.Phrase,
+			ISO:    dates.Format(s.Day),
+			Short:  dates.Short(s.Day),
+			Label:  dates.Describe(s.Day, now),
+			State:  string(dates.Status(s.Day, now)),
+		})
+	}
+	return out
 }
 
 // addAlias appends a name to the page's aliases, leaving the ones already there

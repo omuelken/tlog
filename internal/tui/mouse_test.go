@@ -215,3 +215,20 @@ func TestGOpensAnOrdinaryLink(t *testing.T) {
 		t.Fatalf("opened %v", *got)
 	}
 }
+
+func TestSlashFileCanPickAnyFileOnTheShelf(t *testing.T) {
+	paths := dropped(t, "alpha.pdf", "beta.pdf")
+	m := newModel(t)
+	if _, err := m.svc.Attach(paths...); err != nil {
+		t.Fatal(err)
+	}
+	typeText(t, m, "/file ")
+	if m.comp == nil || len(m.comp.files) != 2 {
+		t.Fatalf("the shelf was not offered: %+v", m.comp)
+	}
+	second := m.comp.files[1].Name
+	send(t, m, k(tea.KeyDown), k(tea.KeyEnter), k(tea.KeyEsc))
+	if got := onDisk(t, m); !strings.Contains(got, "["+second+"]") {
+		t.Fatalf("picking the second file did nothing: %q", got)
+	}
+}

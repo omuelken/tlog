@@ -241,6 +241,11 @@ func (a *API) DatePreview(arg string) DatePreview {
 	}
 }
 
+// DateChoices is the date quick pick: the usual days when nothing is typed,
+// narrowing as it is. The outliner draws the same list for @, /date and
+// /deadline.
+func (a *API) DateChoices(input string) []tapp.DateChoice { return tapp.DateChoices(input, 8) }
+
 // Calendar is a month laid out for drawing, Monday first.
 type Calendar struct {
 	Title string   `json:"title"`

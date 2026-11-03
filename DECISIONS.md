@@ -277,13 +277,24 @@ plus date link" would scream about it. Implicit is wrong here. The property is
 spelled `Deadline` to match what the corpus already had; reading accepts any
 casing and `due` as well.
 
-**Dates are typed, and the calendar only confirms.** `/dl fr` is eight
-keystrokes and no picker beats that, so the calendar shows what the shorthand
-resolved to rather than being the way in. German and English are both accepted
-because these notes are both, and everything is stored as ISO so the files sort,
-grep and mean the same thing in a year. Unparseable input is refused rather than
-guessed at: a silently wrong deadline is worse than being told the word was not
-understood.
+**Dates are typed, and the quick pick only shortens the typing.** `/dl fr` is
+eight keystrokes and no calendar beats that, so the calendar still only confirms.
+What changed is that the menu offers the days before anything is typed and
+narrows as you type — `@`, `/date` and `/deadline` all draw `app.DateChoices`, and
+every suggestion is a phrase that goes through the same parser as typing it out,
+so a pick can never mean something different from the words. German and
+English are both accepted because these notes are both, and everything is
+stored as ISO so the files sort, grep and mean the same thing in a year.
+Unparseable input is refused rather than guessed at: a silently wrong deadline
+is worse than being told the word was not understood.
+
+**A date in a file is read strictly; one typed by hand is pinned when written.**
+Deadlines used to be read with the forgiving parser, relative to the moment of
+reading — so `due:: fri` typed in nvim meant a different day every day, and
+`24.9.` jumped a year once it had passed. Reading is now strict
+(`dates.ParseStored`: ISO, or a date with its year), and every write through the
+core rewrites deadline properties as ISO, resolving a relative one against the
+moment of writing (`normalizeDates`). Reading still never writes.
 
 **"nächsten Freitag" is defined, not inferred.** It is always one week after
 plain "Freitag". The phrase is genuinely ambiguous in speech, and a rule that is

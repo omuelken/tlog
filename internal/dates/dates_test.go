@@ -1,6 +1,7 @@
 package dates
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -157,5 +158,90 @@ func TestTimeOfDayDoesNotMatter(t *testing.T) {
 		if !ok || Format(got) != "2026-09-25" {
 			t.Fatalf("at %02d:55 → %s", h, Format(got))
 		}
+	}
+}
+
+func TestMorePhrasesAreUnderstood(t *testing.T) {
+	cases := map[string]string{
+		"in 3 days": "2026-09-27", "3 days": "2026-09-27", "in 3 tagen": "2026-09-27",
+		"in 2 weeks": "2026-10-08", "in 2 wochen": "2026-10-08", "in a week": "2026-10-01",
+		"in einer woche": "2026-10-01", "in 1 month": "2026-10-24", "in 2 monaten": "2026-11-24",
+		"next week": "2026-09-28", "nächste woche": "2026-09-28", // the Monday it starts on
+		"next month": "2026-10-01",
+		"7 nov":      "2026-11-07", "7. November": "2026-11-07", "7 nov 2027": "2027-11-07",
+		"nov 7": "2026-11-07", "November 7th, 2027": "2027-11-07", "7. Dez": "2026-12-07",
+		"1 sep":        "2027-09-01", // already gone this year
+		"2026/11/07":   "2026-11-07",
+		"end of month": "2026-09-30",
+	}
+	for in, want := range cases {
+		if got := parse(t, in); got != want {
+			t.Errorf("%q → %s, want %s", in, got, want)
+		}
+	}
+	for _, in := range []string{"7 bananas", "in many days", "nov 32"} {
+		if got, ok := Parse(in, now); ok {
+			t.Errorf("%q should not have parsed, got %s", in, Format(got))
+		}
+	}
+}
+
+func TestStoredDatesNeverFloat(t *testing.T) {
+	for in, want := range map[string]string{
+		"2026-10-11": "2026-10-11", "11.10.2026": "2026-10-11", "11.10.26": "2026-10-11",
+		"7 nov 2026": "2026-11-07",
+	} {
+		got, ok := ParseStored(in)
+		if !ok || Format(got) != want {
+			t.Errorf("%q → %v %v, want %s", in, Format(got), ok, want)
+		}
+	}
+	// A relative word in a file would mean a different day every day.
+	for _, in := range []string{"fri", "tomorrow", "+3d", "24.9.", "7 nov", "next week"} {
+		if _, ok := ParseStored(in); ok {
+			t.Errorf("%q was read as a fixed date", in)
+		}
+	}
+}
+
+func TestNormalizeStoredResolvesWhenWritten(t *testing.T) {
+	for in, want := range map[string]string{
+		"fri": "2026-09-25", "24.12.": "2026-12-24", "11.10.2026": "2026-10-11", "2026-10-11": "2026-10-11",
+	} {
+		if got, ok := NormalizeStored(in, now); !ok || got != want {
+			t.Errorf("%q → %q %v, want %s", in, got, ok, want)
+		}
+	}
+	if got, ok := NormalizeStored("whenever", now); ok || got != "whenever" {
+		t.Errorf("not a date, but got %q %v", got, ok)
+	}
+}
+
+func TestSuggestions(t *testing.T) {
+	phrases := func(in string) []string {
+		var out []string
+		for _, s := range Suggest(in, now, 8) {
+			out = append(out, s.Phrase+"="+Format(s.Day))
+		}
+		return out
+	}
+	// Thursday: today, tomorrow, no working days left after Friday, then the
+	// usual landmarks.
+	got := phrases("")
+	want := []string{"today=2026-09-24", "tomorrow=2026-09-25", "next week=2026-09-28", "in 2 weeks=2026-10-08", "end of month=2026-09-30"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("empty: %v", got)
+	}
+	if got := phrases("fr"); len(got) == 0 || got[0] != "friday=2026-09-25" {
+		t.Errorf("fr: %v", got) // and freitag is the same day, so it is not repeated
+	}
+	if got := phrases("in 3"); strings.Join(got, " ") != "in 3 days=2026-09-27 in 3 weeks=2026-10-15 in 3 months=2026-12-24" {
+		t.Errorf("in 3: %v", got)
+	}
+	if got := phrases("7 nov"); len(got) != 1 || got[0] != "7 nov=2026-11-07" {
+		t.Errorf("7 nov: %v", got)
+	}
+	if got := phrases("zzz"); len(got) != 0 {
+		t.Errorf("zzz: %v", got)
 	}
 }

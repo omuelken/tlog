@@ -31,8 +31,31 @@ var weekdays = map[string]time.Weekday{
 	"so": time.Sunday, "son": time.Sunday, "sun": time.Sunday, "sonntag": time.Sunday, "sunday": time.Sunday,
 }
 
+// months maps every name and abbreviation of a month, German and English.
+var months = map[string]time.Month{
+	"jan": time.January, "januar": time.January, "january": time.January, "jän": time.January, "jänner": time.January,
+	"feb": time.February, "februar": time.February, "february": time.February,
+	"mär": time.March, "mar": time.March, "märz": time.March, "maerz": time.March, "march": time.March,
+	"apr": time.April, "april": time.April,
+	"mai": time.May, "may": time.May,
+	"jun": time.June, "juni": time.June, "june": time.June,
+	"jul": time.July, "juli": time.July, "july": time.July,
+	"aug": time.August, "august": time.August,
+	"sep": time.September, "sept": time.September, "september": time.September,
+	"okt": time.October, "oct": time.October, "oktober": time.October, "october": time.October,
+	"nov": time.November, "november": time.November,
+	"dez": time.December, "dec": time.December, "dezember": time.December, "december": time.December,
+}
+
 var (
-	isoRe = regexp.MustCompile(`^(\d{4})-(\d{1,2})-(\d{1,2})$`)
+	isoRe = regexp.MustCompile(`^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$`)
+	// A day and a month by name: 7 nov, 7. November, 7 nov 2026
+	dayMonthRe = regexp.MustCompile(`^(\d{1,2})\.?\s*([a-zäöü]+)\.?(?:\s+(\d{4}|\d{2}))?$`)
+	// The English order: nov 7, November 7th, nov 7 2026, November 7th, 2026
+	monthDayRe = regexp.MustCompile(`^([a-zäöü]+)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\.?,?(?:\s+(\d{4}))?$`)
+	// An offset said in words: in 3 days, 3 Tage, in 2 Wochen, in a week
+	inRe = regexp.MustCompile(`^(?:in\s+)?(\d{1,3}|a|an|one|ein|eine|einer|einem|einen)\s*` +
+		`(days?|tagen?|weeks?|wochen?|months?|monaten?|monat|years?|jahren?|jahr)$`)
 	// The German form, with the year optional: 24.9. / 24.09. / 24.9.26 / 24.9.2026
 	deRe = regexp.MustCompile(`^(\d{1,2})\.(\d{1,2})\.?(\d{2}|\d{4})?\.?$`)
 	// An offset: +3d, +2w, 3t, +1m, +1j
@@ -65,8 +88,18 @@ func Parse(input string, now time.Time) (time.Time, bool) {
 		return next(today, time.Friday), true
 	case "eom", "monatsende":
 		return today.AddDate(0, 1, -today.Day()+1).AddDate(0, 0, -1), true
-	case "eoy", "jahresende":
+	case "eoy", "jahresende", "end of year":
 		return time.Date(today.Year(), 12, 31, 0, 0, 0, 0, today.Location()), true
+	case "end of week":
+		return next(today, time.Friday), true
+	case "end of month":
+		return today.AddDate(0, 1, -today.Day()+1).AddDate(0, 0, -1), true
+	case "next week", "nächste woche", "naechste woche", "kommende woche":
+		// The Monday that starts it: a week is a span, and its first day is
+		// the one a plan for it is due on.
+		return next(today.AddDate(0, 0, 1), time.Monday), true
+	case "next month", "nächsten monat", "naechsten monat", "nächster monat", "kommenden monat":
+		return time.Date(today.Year(), today.Month()+1, 1, 0, 0, 0, 0, today.Location()), true
 	}
 
 	if wd, ok := weekdays[s]; ok {
@@ -85,6 +118,27 @@ func Parse(input string, now time.Time) (time.Time, bool) {
 
 	if m := isoRe.FindStringSubmatch(s); m != nil {
 		return build(atoi(m[1]), atoi(m[2]), atoi(m[3]), today)
+	}
+
+	if d, ok, _ := named(s, today); ok {
+		return d, true
+	}
+
+	if m := inRe.FindStringSubmatch(s); m != nil {
+		n := 1
+		if m[1][0] >= '0' && m[1][0] <= '9' {
+			n = atoi(m[1])
+		}
+		switch unit := m[2]; {
+		case strings.HasPrefix(unit, "day") || strings.HasPrefix(unit, "tag"):
+			return today.AddDate(0, 0, n), true
+		case strings.HasPrefix(unit, "week") || strings.HasPrefix(unit, "woche"):
+			return today.AddDate(0, 0, 7*n), true
+		case strings.HasPrefix(unit, "month") || strings.HasPrefix(unit, "monat"):
+			return today.AddDate(0, n, 0), true
+		default:
+			return today.AddDate(n, 0, 0), true
+		}
 	}
 
 	if m := deRe.FindStringSubmatch(s); m != nil {
@@ -133,6 +187,74 @@ func Parse(input string, now time.Time) (time.Time, bool) {
 	}
 
 	return time.Time{}, false
+}
+
+// named reads a date written with the month's name, in either order. explicit
+// says whether a year was given; without one, a day already gone this year
+// means next year, as with 3.1.
+func named(s string, today time.Time) (d time.Time, ok, explicit bool) {
+	var dayStr, monStr, yearStr string
+	if m := dayMonthRe.FindStringSubmatch(s); m != nil {
+		dayStr, monStr, yearStr = m[1], m[2], m[3]
+	} else if m := monthDayRe.FindStringSubmatch(s); m != nil {
+		monStr, dayStr, yearStr = m[1], m[2], m[3]
+	} else {
+		return time.Time{}, false, false
+	}
+	mon, known := months[monStr]
+	if !known {
+		return time.Time{}, false, false
+	}
+	year := today.Year()
+	if yearStr != "" {
+		year = atoi(yearStr)
+		if year < 100 {
+			year += 2000
+		}
+	}
+	d, ok = build(year, int(mon), atoi(dayStr), today)
+	if ok && yearStr == "" && d.Before(today) {
+		d = d.AddDate(1, 0, 0)
+	}
+	return d, ok, yearStr != ""
+}
+
+// ParseStored reads a date that is already in a file. It is strict where Parse
+// is forgiving: only a form that names one fixed day is accepted — ISO, or a
+// date with its year written out. A relative word in a file ("fri", "+3d",
+// "24.9.") would mean a different day every time it was read, so it is not a
+// date here; it becomes one when tlog next writes the file, resolved against
+// the moment it was written (see NormalizeStored).
+func ParseStored(input string) (time.Time, bool) {
+	s := strings.ToLower(strings.TrimSpace(input))
+	if m := isoRe.FindStringSubmatch(s); m != nil {
+		return build(atoi(m[1]), atoi(m[2]), atoi(m[3]), time.Now())
+	}
+	if m := deRe.FindStringSubmatch(s); m != nil && m[3] != "" {
+		year := atoi(m[3])
+		if year < 100 {
+			year += 2000
+		}
+		return build(year, atoi(m[2]), atoi(m[1]), time.Now())
+	}
+	if d, ok, explicit := named(s, time.Now()); ok && explicit {
+		return d, true
+	}
+	return time.Time{}, false
+}
+
+// NormalizeStored turns whatever was typed as a date in a file into the one
+// form that is written: ISO. A fixed date is converted as it is; a relative one
+// is resolved against now, which is the moment it is being written down. It
+// reports false, and changes nothing, for what is not a date at all.
+func NormalizeStored(value string, now time.Time) (string, bool) {
+	if d, ok := ParseStored(value); ok {
+		return Format(d), true
+	}
+	if d, ok := Parse(value, now); ok {
+		return Format(d), true
+	}
+	return value, false
 }
 
 // build validates a calendar date, rejecting the likes of 31 February rather

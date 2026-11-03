@@ -134,6 +134,7 @@ func (s *Service) Load(rel string) (*Doc, error) {
 // A conflict is never merged: the file changed underneath, so the caller
 // re-reads and decides what to do.
 func (s *Service) Save(d *Doc) error {
+	normalizeDates(d.Doc, time.Now())
 	out := markdown.Render(d.Doc)
 	if markdown.Hash(out) == d.Hash {
 		return nil // the file on disk already says exactly this
