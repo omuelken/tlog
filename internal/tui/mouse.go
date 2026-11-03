@@ -151,13 +151,23 @@ func (m *Model) openHit(h linkHit, rel string) {
 }
 
 // openURL follows an ordinary link. The core decides what may be opened,
-// what a relative path means and what kind of thing is there. An address or
-// a document goes to the desktop — xdg-open, or open on a Mac — and so to the
-// application the system has for it. A folder is somewhere to be, so a
-// terminal opens there; a program is never run, and a terminal opens in the
-// folder that holds it instead. rel is the file the link is written in, which
-// a relative path is relative to.
+// what a relative path means and what kind of thing is there. A plain-text
+// file is shown here, read-only. An address or a document goes to the desktop
+// — xdg-open, or open on a Mac — and so to the application the system has for
+// it. A folder is somewhere to be, so a terminal opens there; a program is
+// never run, and a terminal opens in the folder that holds it instead. rel is
+// the file the link is written in, which a relative path is relative to.
 func (m *Model) openURL(rel, target string) {
+	f, err := m.svc.LinkedText(rel, target)
+	if err != nil {
+		m.errMsg = err.Error()
+		return
+	}
+	if f != nil {
+		m.leave()
+		m.showFile(f)
+		return
+	}
 	resolved, how, err := m.svc.LinkOpening(rel, target)
 	if err != nil {
 		m.errMsg = err.Error()

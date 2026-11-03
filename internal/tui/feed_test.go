@@ -52,8 +52,6 @@ func cursorTo(t *testing.T, m *Model, text string) {
 	t.Fatalf("no block %q on screen", text)
 }
 
-func runes(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
-
 func TestJournalsAreNewestFirstUnderTheirOwnHeadings(t *testing.T) {
 	m := newModel(t)
 	d1 := writeDay(t, m, 1, "- yesterday\n")

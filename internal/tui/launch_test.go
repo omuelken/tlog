@@ -33,7 +33,9 @@ func linkTo(t *testing.T, target string, files map[string]os.FileMode, dirs ...s
 		}
 	}
 	for name, mode := range files {
-		if err := os.WriteFile(filepath.Join(assets, name), []byte("x"), mode); err != nil {
+		// Not text: a plain-text file is shown inside tlog, and these tests
+		// are about what goes to the desktop.
+		if err := os.WriteFile(filepath.Join(assets, name), []byte("\x00bin"), mode); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -70,7 +72,7 @@ func TestClickingAFolderLinkOpensATerminalThere(t *testing.T) {
 
 func TestAProgramIsNeverRunFromALink(t *testing.T) {
 	terms := stubTerminal(t)
-	m, assets := linkTo(t, "../assets/go.command", map[string]os.FileMode{"go.command": 0o755})
+	m, assets := linkTo(t, "../assets/tool", map[string]os.FileMode{"tool": 0o755})
 	got := opened(m)
 	revealed := 0
 	m.svc.Reveal = func(string) error { revealed++; return nil }
@@ -228,5 +230,24 @@ func TestTheSettingReachesTheLauncher(t *testing.T) {
 	m.Update(clickAt(8, 1))
 	if gotCmd != "alacritty --working-directory {dir}" {
 		t.Fatalf("the launcher got %q", gotCmd)
+	}
+}
+
+func TestAScriptIsShownNotRun(t *testing.T) {
+	terms := stubTerminal(t)
+	m := treeModel(t, "- see [go](../assets/go.command)\n\n- below\n")
+	assets := filepath.Join(m.svc.Store.Root, "assets")
+	if err := os.MkdirAll(assets, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(assets, "go.command"), []byte("rm -rf ~\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got := opened(m)
+	send(t, m, k(tea.KeyDown))
+	m.View()
+	m.Update(clickAt(6, 1)) // "• see " is six columns, then the label
+	if m.mode != modeFile || len(*got) != 0 || len(*terms) != 0 {
+		t.Fatalf("a script is text: it is shown, never run (mode %v, opened %v, terminals %v)", m.mode, *got, *terms)
 	}
 }

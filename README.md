@@ -87,7 +87,7 @@ around with single letters; `enter` picks it back up.
 | `t` / `[` `]` | today · previous, next day |
 | `J` | journals: every day, newest first, each still its own file |
 | `b` | back to where you came from |
-| `g` / `o` | follow a `[[link]]`, or open a link or attached file with `xdg-open`; a folder opens a terminal tab |
+| `g` / `o` | follow a `[[link]]`, show a linked text file, or open any other link or file with `xdg-open`; a folder opens a terminal tab |
 | `x` | toggle the task checkbox |
 | `dd` | delete the block and everything in it |
 | `z` / `h` `l` | fold · unfold |
@@ -104,7 +104,9 @@ commands in the palette: `p`, then a few letters of the name.
 **Links and the mouse.** Ordinary markdown links — `[label](url)`, images
 `![alt](url)` and bare addresses — are drawn as their label, images as `▣ alt`;
 hover one to see the address in the footer, click it to open it (`xdg-open`, or
-`open` on a Mac): a file in the application the system has for it, a folder in
+`open` on a Mac). A link to a plain-text file — an attached `.md`, a script, a
+CSV — is shown inside tlog, read-only; `o` there still hands it to the desktop.
+Any other file opens in the application the system has for it, a folder in
 a new tab of the terminal you are in — tmux, zellij, kitty, WezTerm, iTerm2,
 Ghostty and Terminal.app are recognised, and `outliner.terminal` takes any
 other command, with `{dir}` for the folder. A program — an `.app`, a
