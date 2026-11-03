@@ -79,7 +79,7 @@ func (m *Model) agendaKey(k string) (tea.Model, tea.Cmd) {
 			m.mode = modeOutline
 			m.agenda = nil
 			m.goTo(it.Rel)
-			m.focusOffset(it.Offset)
+			m.focusOffset(it.Rel, it.Offset)
 		}
 	}
 	return m, nil

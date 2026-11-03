@@ -5,6 +5,7 @@ import (
 
 	"github.com/tilman-schieber/tlog/internal/app"
 	"github.com/tilman-schieber/tlog/internal/markdown"
+	"github.com/tilman-schieber/tlog/internal/store"
 )
 
 // Noticing an edit made elsewhere. nvim, the outliner and the desktop app all
@@ -42,13 +43,27 @@ func (m *Model) dirty() bool {
 	if m.ed != nil && m.edBlock != nil && m.ed.String() != m.edBlock.Text {
 		return true
 	}
+	if m.feed != nil {
+		for _, d := range m.feed.days {
+			if docDirty(d.Doc) {
+				return true
+			}
+		}
+		return false
+	}
+	return docDirty(m.doc)
+}
+
+// docDirty reports whether one file in memory says something its file on disk
+// does not.
+func docDirty(d *app.Doc) bool {
 	// The blank bullet shown for a page that has no file yet is not work, and
 	// it never matches what is on disk, so it has to be excluded by name.
-	if bs := m.doc.Doc.Blocks; len(bs) == 1 && bs[0].Text == "" &&
+	if bs := d.Doc.Blocks; len(bs) == 1 && bs[0].Text == "" &&
 		len(bs[0].Children) == 0 && len(bs[0].Props) == 0 {
 		return false
 	}
-	return markdown.Hash(markdown.Render(m.doc.Doc)) != m.doc.Hash
+	return markdown.Hash(markdown.Render(d.Doc)) != d.Hash
 }
 
 // changed decides what an external edit means for what is on screen.
@@ -57,6 +72,10 @@ func (m *Model) changed(c changedMsg) {
 	// terminate: a reload here would write nothing, but it would fight the
 	// caret on every keystroke.
 	if m.svc.Ours(app.Change(c)) {
+		return
+	}
+	if m.feed != nil {
+		m.changedDay(c)
 		return
 	}
 
@@ -100,4 +119,49 @@ func (m *Model) changed(c changedMsg) {
 	}
 	m.attach(caret)
 	m.status = "reloaded — changed on disk"
+}
+
+// changedDay is changed for the journals page: only the day that changed is
+// re-read, and typing on any other day is left exactly as it is.
+func (m *Model) changedDay(c changedMsg) {
+	if !store.IsJournal(c.Rel) {
+		return // the journals page shows no references to refresh
+	}
+	i := m.feed.index(c.Rel)
+	if i < 0 {
+		// A day created or deleted elsewhere. The list is re-read once nothing
+		// is being typed, so no keystroke is lost to it.
+		if m.dirty() {
+			m.graphDirty = true
+			return
+		}
+		if err := m.refreshFeed(); err != nil {
+			m.errMsg = err.Error()
+		}
+		return
+	}
+	d := m.feed.days[i].Doc
+	if c.Hash == d.Hash {
+		return
+	}
+	typingHere := m.edBlock != nil && m.docOf(m.edBlock) == d &&
+		m.ed != nil && m.ed.String() != m.edBlock.Text
+	if typingHere || docDirty(d) {
+		m.stale = true
+		m.status = "changed on disk while you were typing — esc saves, ctrl+r discards"
+		return
+	}
+	caret := -1
+	if m.ed != nil {
+		caret = m.ed.cur
+	}
+	editing := m.edBlock != nil && m.docOf(m.edBlock) == d
+	if err := m.reloadDay(c.Rel); err != nil {
+		m.errMsg = err.Error()
+		return
+	}
+	if editing {
+		m.attach(caret)
+	}
+	m.status = "reloaded " + store.Title(c.Rel) + " — changed on disk"
 }

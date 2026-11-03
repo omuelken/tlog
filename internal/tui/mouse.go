@@ -35,6 +35,10 @@ func (m *Model) mouse(msg tea.MouseMsg) {
 		return
 	}
 
+	if msg.Y == 0 && msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+		m.clickHeader(msg.X) // the recent places, named in the header
+		return
+	}
 	line := m.bodyTop + msg.Y - 1 // the header is the first screen line
 	if msg.Y < 1 || msg.Y > m.viewHeight() {
 		line = -1
@@ -72,12 +76,16 @@ func (m *Model) click(line, x int) {
 	if line < 0 || line >= len(m.lineRow) || m.lineRow[line] < 0 {
 		return
 	}
-	if h := m.hitAt(line, x); h != nil {
-		m.openHit(*h)
-		return
-	}
 	ri := m.lineRow[line]
 	r := m.rows[ri]
+	if h := m.hitAt(line, x); h != nil {
+		rel := m.doc.Rel
+		if r.doc != nil {
+			rel = r.doc.Rel
+		}
+		m.openHit(*h, rel)
+		return
+	}
 	if r.kind != rowBlock {
 		m.leave()
 		m.cur = ri
@@ -131,10 +139,11 @@ func (m *Model) click(line, x int) {
 	}
 }
 
-// openHit follows a link the way ctrl+g would.
-func (m *Model) openHit(h linkHit) {
+// openHit follows a link the way ctrl+g would. rel is the file the link is
+// written in.
+func (m *Model) openHit(h linkHit, rel string) {
 	if h.url != "" {
-		m.openURL(h.url)
+		m.openURL(rel, h.url)
 		return
 	}
 	m.leave()
@@ -146,9 +155,10 @@ func (m *Model) openHit(h linkHit) {
 // a document goes to the desktop — xdg-open, or open on a Mac — and so to the
 // application the system has for it. A folder is somewhere to be, so a
 // terminal opens there; a program is never run, and a terminal opens in the
-// folder that holds it instead.
-func (m *Model) openURL(target string) {
-	resolved, how, err := m.svc.LinkOpening(m.doc.Rel, target)
+// folder that holds it instead. rel is the file the link is written in, which
+// a relative path is relative to.
+func (m *Model) openURL(rel, target string) {
+	resolved, how, err := m.svc.LinkOpening(rel, target)
 	if err != nil {
 		m.errMsg = err.Error()
 		return
@@ -174,7 +184,7 @@ func (m *Model) openURL(target string) {
 		m.errMsg = "over ssh nothing here can open it — it is " + resolved
 		return
 	}
-	if err := m.svc.OpenLink(m.doc.Rel, target); err != nil {
+	if err := m.svc.OpenLink(rel, target); err != nil {
 		m.errMsg = err.Error()
 		return
 	}
@@ -224,10 +234,14 @@ func (m *Model) dropFiles(paths []string) {
 			text = " " + text
 		}
 		m.ed.insert(text)
-	} else if b := m.current(); b != nil && m.ensureOnDisk() {
+	} else if b := m.current(); b != nil && m.ensureOnDisk(b) {
 		m.apply(m.svc.InsertAfter(m.addrOf(b), text, false))
 	} else if b == nil {
-		m.apply(m.svc.AppendBlock(m.doc.Rel, m.doc.Hash, text))
+		d := m.doc
+		if m.feed != nil {
+			d = m.feed.days[0].Doc // today, which is always on the page
+		}
+		m.apply(m.svc.AppendBlock(d.Rel, d.Hash, text))
 	}
 	if m.errMsg == "" {
 		m.status = fmt.Sprintf("attached %s — on the shelf in %s", plural(len(added), "file"), m.svc.AttachDir())

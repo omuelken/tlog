@@ -79,30 +79,70 @@ func (m *Model) View() string {
 	return b.String()
 }
 
+// header names where you are and the last few places you were, each of them
+// clickable and ctrl+n to step through, then what kind of page this is and
+// the mode. What does not fit is dropped from the right: tags first, then the
+// older places.
 func (m *Model) header() string {
-	title := store.Title(m.doc.Rel)
 	kind := "page"
-	if store.IsJournal(m.doc.Rel) {
+	switch {
+	case m.feed != nil:
+		kind = "every day"
+	case store.IsJournal(m.doc.Rel):
 		kind = "journal"
 	}
-	// nf-md-notebook, the mark the Omarchy bar widget wears too.
-	left := styleTitle.Render("󰠮 "+title) + " " + styleMuted.Render(kind)
+	var tags, aka string
 	if m.page != nil {
 		for _, t := range m.page.Tags {
-			left += " " + styleTag.Render("#"+t)
+			tags += " " + styleTag.Render("#"+t)
 		}
 		// The other names this page answers to, so a [[link]] that worked is
 		// not a mystery when you arrive.
 		if a := m.page.Aliases; len(a) > 0 {
-			left += " " + styleMuted.Render("auch: "+strings.Join(a, ", "))
+			aka = " " + styleMuted.Render("auch: "+strings.Join(a, ", "))
 		}
 	}
-	right := ""
+	mode := ""
 	if m.mode == modeMove {
-		right = styleTodo.Render("MOVE")
+		mode = styleTodo.Render("MOVE")
 	}
 	if m.stale {
-		right = strings.TrimSpace(styleError.Render("STALE") + " " + right)
+		mode = strings.TrimSpace(styleError.Render("STALE") + " " + mode)
+	}
+
+	// nf-md-notebook, the mark the Omarchy bar widget wears too.
+	mark := styleTitle.Render("󰠮 ")
+	markW := lipgloss.Width(mark)
+	type fit struct {
+		keep      int
+		tags, aka bool
+	}
+	tries := []fit{{tapp.RecentMax, true, true}, {tapp.RecentMax, true, false}}
+	for k := tapp.RecentMax; k >= 1; k-- {
+		tries = append(tries, fit{k, false, false})
+	}
+	var left, right string
+	for _, f := range tries {
+		var strip string
+		strip, m.headerHits = m.recentStrip(f.keep)
+		left = mark + strip
+		right = styleMuted.Render(kind)
+		if f.tags {
+			right += tags
+		}
+		if f.aka {
+			right += aka
+		}
+		if mode != "" {
+			right += "  " + mode
+		}
+		if m.width == 0 || lipgloss.Width(left)+lipgloss.Width(right)+1 <= m.width {
+			break
+		}
+	}
+	for i := range m.headerHits {
+		m.headerHits[i].start += markW
+		m.headerHits[i].end += markW
 	}
 	return pad(left, right, m.width)
 }
@@ -115,10 +155,12 @@ func (m *Model) footer() string {
 		return styleMuted.Render(m.status)
 	case m.hover != nil:
 		return styleURL.Render(m.hover.target()) + styleMuted.Render("  click to open")
+	case m.rowKind() == rowDay:
+		return styleMuted.Render("enter open this day on its own · [ ] older · newer day · ↑↓ move")
 	case m.rowKind() != rowBlock:
 		return styleMuted.Render("enter open · ↑↓ move · these live on other pages and are not edited here")
 	case m.mode == modeMove:
-		return styleMuted.Render("enter write · j k move · p go to · / search · t today · b back · g follow · [ ] days · x task · dd delete · z fold · ? keys · q quit")
+		return styleMuted.Render("enter write · j k move · p go to · / search · t today · J journals · b back · g follow · [ ] days · x task · dd delete · z fold · ? keys · q quit")
 	default:
 		// Typing needs no reminding; getting somewhere does.
 		return styleMuted.Render("esc to move around · ctrl+p go to · ctrl+f search · F1 keys")
@@ -164,6 +206,10 @@ func (m *Model) renderRow(r row, selected, editing bool) []string {
 
 // renderRowHits draws a row and says, line by line, where its links landed.
 func (m *Model) renderRowHits(r row, selected, editing bool) ([]string, [][]linkHit) {
+	if r.kind == rowDay {
+		lines := m.dayHeading(r, selected)
+		return lines, make([][]linkHit, len(lines))
+	}
 	if r.kind != rowBlock {
 		// A heading starts with a blank line; each screen line is its own
 		// entry, or the mouse would be a line out below it.
@@ -418,7 +464,7 @@ func (m *Model) highlight(s string, r row) (string, []linkHit) {
 	// theirs.
 	var embeds []tapp.EmbedView
 	if r.kind == rowBlock && r.block != nil {
-		embeds = m.embeds[r.block.Start]
+		embeds = m.embeds[r.block]
 	}
 	cursor := &refCursor{embeds: embeds}
 	cursor.skip(r, s)

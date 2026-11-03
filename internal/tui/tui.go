@@ -43,11 +43,13 @@ const (
 	rowLink                  // a page name to jump to
 	rowRef                   // a block on another page that refers to this one
 	rowEmbed                 // a block on another page, brought in by a reference
+	rowDay                   // a day's heading on the journals page
 )
 
 type row struct {
 	kind  rowKind
 	block *markdown.Block
+	doc   *app.Doc // the file a block belongs to; on the journals page, its day
 	depth int
 	path  string
 
@@ -74,6 +76,10 @@ type Model struct {
 
 	collapsed map[string]bool
 
+	// feed is the journals page, nil on any other. While it is open, m.doc is
+	// a stand-in naming the page; the blocks belong to the days in feed.
+	feed *feed
+
 	pick *picker
 	comp *completion
 
@@ -84,16 +90,22 @@ type Model struct {
 	// embeds resolves each block's references by offset, so that a reference
 	// can be drawn as the block it points at rather than as a page name. It is
 	// rebuilt with the rows, from the same read model the desktop app uses.
-	embeds map[int][]app.EmbedView
+	embeds map[*markdown.Block][]app.EmbedView
 
 	// look is a snapshot held only while a picker is open, so that filtering as
 	// you type does not rebuild the graph on every keystroke.
 	look *app.Lookup
 
 	history []string
-	// recent is every page visited this session, most recent first, so the
-	// palette can open on the places you actually go.
-	recent []string
+
+	// recent is the places most recently arrived at, newest first, kept by
+	// the core across restarts and shown in the header. While cycling through
+	// it with ctrl+n it holds still; cycleAt is where in it the cycle stands.
+	recent     []string
+	cycling    bool
+	cycleAt    int
+	headerHits []recentSpan
+
 	status string
 	errMsg string
 	stale  bool
@@ -139,6 +151,7 @@ func Run(svc *app.Service, rel string) error {
 		rel = svc.StartupRel()
 	}
 	m := &Model{svc: svc, collapsed: map[string]bool{}}
+	m.recent = svc.Recent()
 	if err := m.load(rel); err != nil {
 		return err
 	}
@@ -168,46 +181,57 @@ func Run(svc *app.Service, rel string) error {
 func (m *Model) Init() tea.Cmd { return watchCmd(m.changes) }
 
 // load reads a file for editing together with what the rest of the notes say
-// about it. Both come from the core in one graph build.
+// about it. Both come from the core in one graph build. The journals page is
+// every day at once, each still its own file.
 func (m *Model) load(rel string) error {
-	d, page, err := m.svc.Open(rel)
-	if err != nil {
-		return err
-	}
-	// Collapse is remembered by position, and a position means a different
-	// block on a different file — "the second block at the top level" is not
-	// the same thing on two pages. Arriving somewhere new starts expanded;
-	// re-reading the same file keeps what was folded.
-	if m.doc == nil || m.doc.Rel != rel {
-		m.collapsed = map[string]bool{}
+	arriving := m.doc == nil || m.doc.Rel != rel
+	if rel == app.JournalsRel {
+		if err := m.openFeed(0); err != nil {
+			return err
+		}
+		if arriving {
+			m.collapsed = map[string]bool{}
+		}
 	} else {
-		m.collapsed = carryCollapse(m.collapsed, m.doc.Doc, d.Doc)
+		d, page, err := m.svc.Open(rel)
+		if err != nil {
+			return err
+		}
+		// Collapse is remembered by position, and a position means a
+		// different block on a different file — "the second block at the top
+		// level" is not the same thing on two pages. Arriving somewhere new
+		// starts expanded; re-reading the same file keeps what was folded.
+		if arriving {
+			m.collapsed = map[string]bool{}
+		} else {
+			m.collapsed = carryCollapse(m.collapsed, m.doc.Doc, d.Doc)
+		}
+		m.feed = nil
+		m.doc, m.page = d, page
+		blankIfEmpty(m.doc)
 	}
-	m.doc, m.page = d, page
 	m.stale = false
-	if len(m.doc.Doc.Blocks) == 0 {
-		m.doc.Doc.AppendChild(nil, &markdown.Block{})
-	}
 	m.cur, m.top = 0, 0
 	m.buildRows()
-	m.visited(rel)
+	if m.feed != nil && len(m.rows) > 1 {
+		m.cur = 1 // today's first block, not its heading
+	}
+	if !m.cycling {
+		m.touch(rel)
+	}
 	m.syncEditor()
 	return nil
-}
-
-func (m *Model) visited(rel string) {
-	out := []string{rel}
-	for _, r := range m.recent {
-		if r != rel && len(out) < 30 {
-			out = append(out, r)
-		}
-	}
-	m.recent = out
 }
 
 // refresh re-reads what the notes say about the current file, after something
 // changed the links or tags in it.
 func (m *Model) refresh() {
+	if m.feed != nil {
+		for _, d := range m.feed.days {
+			m.refreshDay(d.Doc.Rel)
+		}
+		return
+	}
 	page, err := m.svc.View(m.doc.Rel)
 	if err != nil {
 		m.errMsg = err.Error()
@@ -218,50 +242,61 @@ func (m *Model) refresh() {
 
 func (m *Model) buildRows() {
 	m.rows = m.rows[:0]
+	m.embeds = map[*markdown.Block][]app.EmbedView{}
 
-	// What the core resolved about this page, by offset: which references
-	// point where, and which blocks are nothing but a reference.
-	views := map[int]*app.BlockView{}
-	m.embeds = map[int][]app.EmbedView{}
-	if m.page != nil {
-		for i := range m.page.Blocks {
-			bv := &m.page.Blocks[i]
-			views[bv.Offset] = bv
-			if len(bv.Embeds) > 0 {
-				m.embeds[bv.Offset] = bv.Embeds
+	// walkDoc lays out one file's blocks. What the core resolved about it, by
+	// offset, says which references point where and which blocks are nothing
+	// but a reference.
+	walkDoc := func(d *app.Doc, page *app.PageView, prefix string) {
+		views := map[int]*app.BlockView{}
+		if page != nil {
+			for i := range page.Blocks {
+				views[page.Blocks[i].Offset] = &page.Blocks[i]
 			}
 		}
-	}
+		var walk func(bs []*markdown.Block, depth int, prefix string)
+		walk = func(bs []*markdown.Block, depth int, prefix string) {
+			for i, b := range bs {
+				path := blockPath(prefix, i)
+				m.rows = append(m.rows, row{block: b, doc: d, depth: depth, path: path})
+				bv := views[b.Start]
+				if bv != nil && len(bv.Embeds) > 0 {
+					m.embeds[b] = bv.Embeds
+				}
 
-	var walk func(bs []*markdown.Block, depth int, prefix string)
-	walk = func(bs []*markdown.Block, depth int, prefix string) {
-		for i, b := range bs {
-			path := blockPath(prefix, i)
-			m.rows = append(m.rows, row{block: b, depth: depth, path: path})
+				// A block that is nothing but a reference brings the subtree
+				// with it. Those rows belong to another file, so they are
+				// shown and not edited — current() returns nil for anything
+				// that is not a block of this page, which keeps them read-only.
+				if bv != nil && bv.IsEmbed && !m.collapsed[path] {
+					for _, kid := range bv.EmbedKids {
+						m.rows = append(m.rows, row{
+							kind:   rowEmbed,
+							text:   kid.Text,
+							rel:    kid.Rel,
+							offset: kid.Addr.Offset,
+							depth:  depth + kid.Depth,
+						})
+					}
+				}
 
-			// A block that is nothing but a reference brings the subtree with
-			// it. Those rows belong to another file, so they are shown and not
-			// edited — current() returns nil for anything that is not a block
-			// of this page, which is what keeps them read-only.
-			if bv := views[b.Start]; bv != nil && bv.IsEmbed && !m.collapsed[path] {
-				for _, kid := range bv.EmbedKids {
-					m.rows = append(m.rows, row{
-						kind:   rowEmbed,
-						text:   kid.Text,
-						rel:    kid.Rel,
-						offset: kid.Addr.Offset,
-						depth:  depth + kid.Depth,
-					})
+				if len(b.Children) > 0 && !m.collapsed[path] {
+					walk(b.Children, depth+1, path)
 				}
 			}
-
-			if len(b.Children) > 0 && !m.collapsed[path] {
-				walk(b.Children, depth+1, path)
-			}
 		}
+		walk(d.Doc.Blocks, 0, prefix)
 	}
-	walk(m.doc.Doc.Blocks, 0, "")
-	m.buildSections()
+
+	if m.feed != nil {
+		for _, day := range m.feed.days {
+			m.rows = append(m.rows, row{kind: rowDay, text: store.Title(day.Doc.Rel), rel: day.Doc.Rel})
+			walkDoc(day.Doc, day.View, dayPrefix(day.Doc.Rel))
+		}
+	} else {
+		walkDoc(m.doc, m.page, "")
+		m.buildSections()
+	}
 	if m.cur >= len(m.rows) {
 		m.cur = max(0, len(m.rows)-1)
 	}
@@ -324,6 +359,9 @@ func (m *Model) activateRow() bool {
 	switch r.kind {
 	case rowHeader:
 		return true
+	case rowDay:
+		m.goTo(r.rel) // the day on its own
+		return true
 	case rowLink:
 		if r.rel != "" {
 			m.goTo(r.rel)
@@ -333,7 +371,7 @@ func (m *Model) activateRow() bool {
 		return true
 	case rowRef, rowEmbed:
 		m.goTo(r.rel)
-		m.focusOffset(r.offset)
+		m.focusOffset(r.rel, r.offset)
 		return true
 	}
 	return false
@@ -356,10 +394,40 @@ func (m *Model) currentPath() string {
 	return m.rows[m.cur].path
 }
 
-// save writes the document, turning a lost race into a visible message rather
+// docOf is the file a block belongs to: the page, or on the journals page the
+// day it was drawn from. Every edit is addressed through it, so a change can
+// only ever reach the file it was made in.
+func (m *Model) docOf(b *markdown.Block) *app.Doc {
+	if m.feed != nil {
+		for _, r := range m.rows {
+			if r.block == b && r.doc != nil {
+				return r.doc
+			}
+		}
+		for _, d := range m.feed.days {
+			for _, x := range d.Doc.Doc.Flatten() {
+				if x == b {
+					return d.Doc
+				}
+			}
+		}
+	}
+	return m.doc
+}
+
+// currentRel is the file the row under the cursor belongs to, which is what a
+// relative link in it is relative to.
+func (m *Model) currentRel() string {
+	if m.cur >= 0 && m.cur < len(m.rows) && m.rows[m.cur].doc != nil {
+		return m.rows[m.cur].doc.Rel
+	}
+	return m.doc.Rel
+}
+
+// save writes a document, turning a lost race into a visible message rather
 // than a silent overwrite.
-func (m *Model) save() {
-	if err := m.svc.Save(m.doc); err != nil {
+func (m *Model) save(d *app.Doc) {
+	if err := m.svc.Save(d); err != nil {
 		var conflict *store.ErrConflict
 		if asConflict(err, &conflict) {
 			m.stale = true
@@ -379,6 +447,10 @@ func (m *Model) save() {
 	// derived from them. So is what completion offers: a person mentioned for
 	// the first time a moment ago is someone to complete now.
 	m.look = nil
+	if m.feed != nil {
+		m.refreshDay(d.Rel)
+		return
+	}
 	m.refresh()
 }
 
@@ -428,8 +500,14 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		m.hover = nil // the screen is about to change under the pointer
+		if msg.String() != keyRecent {
+			m.settleRecent()
+		}
 		return m.key(msg)
 	case tea.MouseMsg:
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			m.settleRecent()
+		}
 		m.mouse(msg)
 		return m, nil
 	case changedMsg:
@@ -511,6 +589,8 @@ func (m *Model) moveKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 		m.openSearch()
 	case "t":
 		m.goTo(m.svc.TodayRel())
+	case "J":
+		m.goTo(app.JournalsRel)
 	case "b", "backspace":
 		m.back()
 	case "g", "o":
@@ -596,6 +676,9 @@ func (m *Model) outlineKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "ctrl+t":
 		m.goTo(m.svc.TodayRel())
+		return m, nil
+	case keyRecent:
+		m.cycleRecent()
 		return m, nil
 	case "ctrl+o":
 		m.back()
@@ -813,7 +896,22 @@ func (m *Model) typingKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 // was changed. The editor follows the cursor: see syncEditor.
 func (m *Model) moveCursor(delta int) {
 	m.leave()
+	from := m.cur
 	m.cur = max(0, min(m.cur+delta, len(m.rows)-1))
+	// A day's heading is stepped over, so the arrows run from the last block
+	// of one day into the first of the next, as they do from block to block.
+	if m.rowKind() == rowDay && delta != 0 {
+		step := 1
+		if delta < 0 {
+			step = -1
+		}
+		if next := m.cur + step; next >= 0 && next < len(m.rows) {
+			m.cur = next
+		} else if from >= 0 && from < len(m.rows) {
+			m.cur = from
+		}
+	}
+	m.nearEnd()
 	m.syncEditor()
 }
 
@@ -839,7 +937,14 @@ func (m *Model) undoFile(redo bool) {
 	}
 	m.look = nil
 	m.errMsg = ""
-	if done.Rel != m.doc.Rel {
+	if m.feed != nil && m.feed.index(done.Rel) >= 0 {
+		row := m.cur
+		if err := m.reloadDay(done.Rel); err != nil {
+			m.errMsg = err.Error()
+			return
+		}
+		m.cur = max(0, min(row, len(m.rows)-1))
+	} else if done.Rel != m.doc.Rel {
 		m.goTo(done.Rel)
 	} else {
 		row := m.cur
@@ -919,7 +1024,8 @@ func (m *Model) expand() {
 // writes and hands back a fresh offset. The text being typed is the one thing
 // that is allowed to differ, and text does not move the block it is in.
 func (m *Model) addrOf(b *markdown.Block) app.Addr {
-	return app.Addr{Rel: m.doc.Rel, Offset: b.Start, Hash: m.doc.Hash}
+	d := m.docOf(b)
+	return app.Addr{Rel: d.Rel, Offset: b.Start, Hash: d.Hash}
 }
 
 // ensureOnDisk makes the address of a block mean something before one is taken.
@@ -929,11 +1035,12 @@ func (m *Model) addrOf(b *markdown.Block) app.Addr {
 // it is *in the file*. The first real operation on such a page has to put it
 // there. Writing is skipped when the file already says exactly this, which is
 // the case every other time.
-func (m *Model) ensureOnDisk() bool {
-	if markdown.Hash(markdown.Render(m.doc.Doc)) == m.doc.Hash {
+func (m *Model) ensureOnDisk(b *markdown.Block) bool {
+	d := m.docOf(b)
+	if markdown.Hash(markdown.Render(d.Doc)) == d.Hash {
 		return true
 	}
-	m.save()
+	m.save(d)
 	return m.errMsg == ""
 }
 
@@ -948,7 +1055,7 @@ func addrFrom(res *app.Result) app.Addr {
 // desktop app cannot come to disagree about what indent means.
 func (m *Model) structural(fn func(app.Addr) (*app.Result, error)) {
 	b := m.current()
-	if b == nil || !m.ensureOnDisk() {
+	if b == nil || !m.ensureOnDisk(b) {
 		return
 	}
 	m.apply(fn(m.addrOf(b)))
@@ -961,12 +1068,12 @@ func (m *Model) apply(res *app.Result, err error) bool {
 		m.fail(err)
 		return false
 	}
-	if err := m.reloadFromDisk(); err != nil {
+	if err := m.reloadFile(res.Rel); err != nil {
 		m.errMsg = err.Error()
 		return false
 	}
 	m.errMsg = ""
-	m.focusOffset(res.Offset)
+	m.focusOffset(res.Rel, res.Offset)
 	// A push that failed happened in the background, so it has to be said
 	// somewhere or it is the same as not happening at all.
 	if sync := m.svc.Sync(); sync.LastErr != "" {
@@ -997,6 +1104,9 @@ func (m *Model) fail(err error) {
 // reloadFromDisk re-reads the file after the core rewrote it, keeping the view
 // where it is. load is for arriving at a page; this is for staying on one.
 func (m *Model) reloadFromDisk() error {
+	if m.feed != nil {
+		return m.refreshFeed()
+	}
 	d, page, err := m.svc.Open(m.doc.Rel)
 	if err != nil {
 		return err
@@ -1013,12 +1123,21 @@ func (m *Model) reloadFromDisk() error {
 	return nil
 }
 
-// focusOffset puts the cursor on the block starting at an offset. Reloading
-// replaces every block pointer, so after a write a block is found by where it
-// is rather than by which object it was.
-func (m *Model) focusOffset(off int) {
+// reloadFile re-reads one file after the core rewrote it: on the journals page
+// only that day, so typing on another day is left alone.
+func (m *Model) reloadFile(rel string) error {
+	if m.feed != nil {
+		return m.reloadDay(rel)
+	}
+	return m.reloadFromDisk()
+}
+
+// focusOffset puts the cursor on the block starting at an offset in a file.
+// Reloading replaces every block pointer, so after a write a block is found by
+// where it is rather than by which object it was.
+func (m *Model) focusOffset(rel string, off int) {
 	for i, r := range m.rows {
-		if r.kind == rowBlock && r.block.Start == off {
+		if r.kind == rowBlock && r.block.Start == off && (r.doc == nil || r.doc.Rel == rel) {
 			m.cur = i
 			return
 		}
@@ -1041,7 +1160,7 @@ func (m *Model) focus(b *markdown.Block) {
 
 func (m *Model) deleteBlock() {
 	b := m.current()
-	if b == nil || !m.ensureOnDisk() {
+	if b == nil || !m.ensureOnDisk(b) {
 		return
 	}
 	// Deleting the last block leaves an empty file, and load puts the blank
@@ -1055,7 +1174,7 @@ func (m *Model) deleteBlock() {
 
 func (m *Model) toggleTask() {
 	b := m.current()
-	if b == nil || !m.ensureOnDisk() {
+	if b == nil || !m.ensureOnDisk(b) {
 		return
 	}
 	m.apply(m.svc.ToggleTask(m.addrOf(b)))
@@ -1105,9 +1224,18 @@ func (m *Model) syncEditor() {
 // replaces every block, and writing into one from before it would be writing
 // into nothing.
 func (m *Model) holds(b *markdown.Block) bool {
-	for _, x := range m.doc.Doc.Flatten() {
-		if x == b {
-			return true
+	docs := []*app.Doc{m.doc}
+	if m.feed != nil {
+		docs = docs[:0]
+		for _, d := range m.feed.days {
+			docs = append(docs, d.Doc)
+		}
+	}
+	for _, d := range docs {
+		for _, x := range d.Doc.Flatten() {
+			if x == b {
+				return true
+			}
 		}
 	}
 	return false
@@ -1123,15 +1251,19 @@ func (m *Model) leave() {
 	m.ed, m.edBlock, m.comp = nil, nil, nil
 	if ed != nil && b != nil && ed.String() != b.Text {
 		b.Text = ed.String()
-		m.save()
+		d := m.docOf(b)
+		m.save(d)
 		// A longer or shorter block moves every block after it in the file,
 		// and the core addresses blocks by where they start. Re-reading puts
 		// the offsets right, so the next command on a later block is not
 		// refused as stale. A refused save is not re-read: that would throw
 		// the typing away.
 		if !m.stale && m.errMsg == "" {
-			if err := m.reloadFromDisk(); err != nil {
+			keepRel, keepOff := m.cursorBlock()
+			if err := m.reloadFile(d.Rel); err != nil {
 				m.errMsg = err.Error()
+			} else if m.feed != nil && keepRel != "" {
+				m.focusOffset(keepRel, keepOff)
 			}
 		} else {
 			m.buildRows()
@@ -1189,7 +1321,7 @@ func (m *Model) commitText() (app.Addr, bool) {
 		return app.Addr{}, false
 	}
 	m.edBlock.Text = m.ed.String()
-	if !m.ensureOnDisk() {
+	if !m.ensureOnDisk(m.edBlock) {
 		return app.Addr{}, false
 	}
 	// What was typed is a step of its own, so undoing the indent or the
@@ -1203,8 +1335,8 @@ func (m *Model) commitText() (app.Addr, bool) {
 // has nothing above it, so there an empty one is simply removed.
 func (m *Model) backspaceAtStart() {
 	b := m.edBlock
-	if m.cur == 0 && m.ed.String() == "" && len(b.Children) == 0 && len(m.doc.Doc.Blocks) > 1 {
-		if !m.ensureOnDisk() {
+	if m.firstOfFile() && m.ed.String() == "" && len(b.Children) == 0 && len(m.docOf(b).Doc.Blocks) > 1 {
+		if !m.ensureOnDisk(b) {
 			return
 		}
 		if m.apply(m.svc.DeleteBlock(m.addrOf(b))) {
@@ -1215,10 +1347,22 @@ func (m *Model) backspaceAtStart() {
 	m.mergeIntoPrevious()
 }
 
+// firstOfFile reports whether the cursor is on the first row of its file: the
+// top of the page, or just under a day's heading on the journals page.
+func (m *Model) firstOfFile() bool {
+	return m.cur == 0 || m.rows[m.cur-1].kind == rowDay
+}
+
 // mergeIntoPrevious is what backspace at the very start of a block does: join
 // it onto the block above.
 func (m *Model) mergeIntoPrevious() {
-	if m.cur == 0 || m.edBlock == nil {
+	if m.edBlock == nil {
+		return
+	}
+	if m.firstOfFile() {
+		if m.feed != nil {
+			m.status = "the first block of a day has nothing above it in its file"
+		}
 		return
 	}
 	// Where the caret should land afterwards: the seam between the two texts.
@@ -1264,6 +1408,10 @@ func (m *Model) back() {
 }
 
 func (m *Model) shiftDay(delta int) {
+	if m.feed != nil {
+		m.jumpDay(delta)
+		return
+	}
 	day, ok := store.JournalDay(m.doc.Rel)
 	if !ok {
 		day = time.Now()
@@ -1299,7 +1447,7 @@ func (m *Model) followLink() tea.Cmd {
 		return nil
 	case 1:
 		if items[0].url != "" {
-			m.openURL(items[0].url)
+			m.openURL(m.currentRel(), items[0].url)
 		} else {
 			m.openLink(items[0].link)
 		}
@@ -1326,6 +1474,10 @@ func (m *Model) openLink(l markdown.Link) {
 }
 
 func (m *Model) openBacklinks() {
+	if m.page == nil {
+		m.status = "the journals page is every day — open a day for what links to it"
+		return
+	}
 	name := m.page.Title
 	var items []pickItem
 	for _, r := range m.page.Refs {
@@ -1378,11 +1530,12 @@ func (m *Model) openPalette() {
 		}
 	}
 	for _, rel := range m.recent {
-		add(pickItem{label: store.Title(rel), detail: "recent", rel: rel})
+		add(pickItem{label: placeName(rel), detail: "recent", rel: rel})
 	}
 	if today := m.svc.TodayRel(); !seen[today] {
 		add(pickItem{label: store.Title(today), detail: "today", rel: today})
 	}
+	add(pickItem{label: "Journals", detail: "every day, newest first · J", rel: app.JournalsRel})
 	items = append(items, m.commands()...)
 	// The core's list of places, journals newest first, so the palette, the
 	// window and `tlog places` offer the same things in the same order.
@@ -1471,7 +1624,7 @@ func (m *Model) pickerKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if item.url != "" {
-			m.openURL(item.url)
+			m.openURL(m.currentRel(), item.url)
 			return m, nil
 		}
 		if item.link.Page != "" {
@@ -1480,7 +1633,7 @@ func (m *Model) pickerKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 		}
 		m.goTo(item.rel)
 		if item.offset > 0 {
-			m.focusOffset(item.offset)
+			m.focusOffset(item.rel, item.offset)
 		}
 		return m, nil
 	case "backspace":

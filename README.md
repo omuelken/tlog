@@ -85,6 +85,7 @@ around with single letters; `enter` picks it back up.
 | `p` | go to: recent pages first, then commands, journals, pages; a new name makes the page |
 | `/` | search every block |
 | `t` / `[` `]` | today · previous, next day |
+| `J` | journals: every day, newest first, each still its own file |
 | `b` | back to where you came from |
 | `g` / `o` | follow a `[[link]]`, or open a link or attached file with `xdg-open`; a folder opens a terminal tab |
 | `x` | toggle the task checkbox |
@@ -95,6 +96,7 @@ around with single letters; `enter` picks it back up.
 | `?` / `q` | help · quit |
 
 **Either** — `ctrl+p` go to · `ctrl+f` search · `ctrl+t` today · `ctrl+o` back ·
+`ctrl+n` the next recent place (the header names them; click one to go there) ·
 `alt+←` `alt+→` days · `ctrl+g` follow · `ctrl+d` task · `ctrl+↑` `ctrl+↓` fold ·
 `ctrl+r` reload · `F1` help · `ctrl+q` quit. Backlinks, messages and settings are
 commands in the palette: `p`, then a few letters of the name.
