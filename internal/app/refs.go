@@ -1,6 +1,11 @@
 package app
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/tilman-schieber/tlog/internal/markdown"
+	"github.com/tilman-schieber/tlog/internal/store"
+)
 
 // Block references. The syntax and the graph have been here from the start —
 // [[Page#^anchor]] parses, resolves and shows up in backlinks — with no way to
@@ -25,7 +30,7 @@ type BlockRef struct {
 // what you can find you can refer to, with empty blocks left out because a
 // reference to one says nothing.
 func (l *Lookup) Blocks(query string, limit int) []BlockRef {
-	var out []BlockRef
+	out := []BlockRef{}
 	for _, h := range l.g.Search(query, 0) {
 		if strings.TrimSpace(h.Block.Text) == "" {
 			continue
@@ -58,9 +63,24 @@ func (s *Service) Blocks(query string, limit int) ([]BlockRef, error) {
 // it. Calling it twice on the same block returns the same link and writes once,
 // because EnsureAnchor keeps the anchor a block already has.
 func (s *Service) RefTo(a Addr) (string, error) {
-	l, err := s.Anchor(a)
+	link, _, err := s.Name(a)
+	return link, err
+}
+
+// Name is RefTo together with where the block is afterwards. Naming a block
+// rewrites its file, so the address it was named by is stale the moment the
+// link exists; a caller that wants to go on working with the block needs the
+// new one.
+func (s *Service) Name(a Addr) (string, *Result, error) {
+	d, b, err := s.Resolve(a)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return l.String(), nil
+	anchor := d.Doc.EnsureAnchor(b)
+	res, err := s.commit(d, b)
+	if err != nil {
+		return "", nil, err
+	}
+	link := markdown.Link{Page: store.PageName(d.Rel), Anchor: anchor}
+	return link.String(), res, nil
 }

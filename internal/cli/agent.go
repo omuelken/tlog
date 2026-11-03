@@ -2,9 +2,11 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/tilman-schieber/tlog/internal/app"
@@ -22,8 +24,8 @@ import (
 // knows whether re-reading would help.
 
 // Exit codes. 0 and 1 are the usual; the other three exist so that a caller
-// can tell "that move does not exist" from "you are behind" without matching
-// on the text of a message.
+// can tell "that does not exist" from "you are behind" without matching on the
+// text of a message.
 const (
 	exitOK      = 0
 	exitError   = 1
@@ -34,29 +36,17 @@ const (
 
 // fail maps an error to the exit code that describes it.
 func fail(stderr io.Writer, err error) int {
+	fmt.Fprintf(stderr, "tlog: %v\n", err)
+	var conflict *store.ErrConflict
 	switch {
 	case app.Refused(err):
-		fmt.Fprintf(stderr, "tlog: %v\n", err)
 		return exitRefused
-	case app.Stale(err):
-		fmt.Fprintf(stderr, "tlog: %v\n", err)
+	case app.Stale(err), errors.As(err, &conflict):
 		return exitStale
+	case errors.Is(err, store.ErrOutside), errors.Is(err, store.ErrBadPageName):
+		return exitUsage
 	}
-	var conflict *store.ErrConflict
-	if ok := asConflict(err, &conflict); ok {
-		fmt.Fprintf(stderr, "tlog: %v\n", err)
-		return exitStale
-	}
-	fmt.Fprintf(stderr, "tlog: %v\n", err)
 	return exitError
-}
-
-func asConflict(err error, target **store.ErrConflict) bool {
-	c, ok := err.(*store.ErrConflict)
-	if ok {
-		*target = c
-	}
-	return ok
 }
 
 // parseFlags parses a flag set without caring where the flags were written.
@@ -107,6 +97,13 @@ func isBoolFlag(f *flag.Flag) bool {
 	return ok && b.IsBoolFlag()
 }
 
+// flags makes a flag set that reports its mistakes on stderr.
+func flags(name string, stderr io.Writer) *flag.FlagSet {
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	return fs
+}
+
 // emit writes a value as JSON. Indented, because the first reader of any of
 // this is a person finding out what the shape is.
 func emit(w io.Writer, v any) error {
@@ -116,11 +113,63 @@ func emit(w io.Writer, v any) error {
 	return enc.Encode(v)
 }
 
+// stdin is where a "-" argument reads from; tests point it elsewhere.
+var stdin io.Reader = os.Stdin
+
+// textFrom is the text an operation was given: the arguments joined, or
+// standard input when the one argument is "-", for a block of several lines.
+func textFrom(args []string) (string, error) {
+	if len(args) == 1 && args[0] == "-" {
+		data, err := io.ReadAll(stdin)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimRight(string(data), "\n"), nil
+	}
+	return strings.Join(args, " "), nil
+}
+
+// written is what a write prints with -json: the address to carry on from,
+// and a warning when the note was saved but the commit or push after it
+// failed. The write succeeded, so the exit code is 0; the warning is there so
+// that it is not only on stderr.
+type written struct {
+	Addr    app.Addr `json:"addr"`
+	Rel     string   `json:"rel"`
+	Offset  int      `json:"offset"`
+	Hash    string   `json:"hash"`
+	Warning string   `json:"warning,omitempty"`
+}
+
+// settle commits what a one-shot command wrote and says how it went. A
+// one-shot command never leaves an uncommitted change behind; a commit that
+// fails is reported, never swallowed, but does not undo the save.
+func settle(stderr io.Writer, svc *app.Service) string {
+	if err := svc.Commit(); err != nil {
+		fmt.Fprintf(stderr, "tlog: %v\n", err)
+		return err.Error()
+	}
+	return ""
+}
+
+// report prints the outcome of a write: its address, or the whole result as
+// JSON when asked.
+func report(stdout, stderr io.Writer, svc *app.Service, res *app.Result, asJSON bool) int {
+	warning := settle(stderr, svc)
+	if asJSON {
+		if err := emit(stdout, written{Addr: res.Addr, Rel: res.Rel, Offset: res.Offset, Hash: res.Hash, Warning: warning}); err != nil {
+			return fail(stderr, err)
+		}
+		return exitOK
+	}
+	fmt.Fprintln(stdout, res.Addr.String())
+	return exitOK
+}
+
 // --- reading -----------------------------------------------------------------
 
 func cmdSearch(args []string, stdout, stderr io.Writer, svc *app.Service) int {
-	fs := flag.NewFlagSet("search", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flags("search", stderr)
 	asJSON := fs.Bool("json", false, "print the hits as JSON, with an address for each")
 	limit := fs.Int("n", 50, "how many hits at most")
 	if err := parseFlags(fs, args); err != nil {
@@ -143,27 +192,32 @@ func cmdSearch(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 		return exitOK
 	}
 	for _, h := range hits {
-		fmt.Fprintf(stdout, "%-28s %s\n", truncate(h.Page, 28), truncate(h.Text, 90))
+		fmt.Fprintf(stdout, "%-28s %s\n", truncate(h.Page, 28), truncate(h.FirstLine, 90))
 	}
 	return exitOK
 }
 
+// cmdIndex lists everything. With -json each entry is a place — kind, name and
+// path — so that a caller can open one without assembling a path itself.
 func cmdIndex(args []string, stdout, stderr io.Writer, svc *app.Service) int {
-	fs := flag.NewFlagSet("index", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	asJSON := fs.Bool("json", false, "print as JSON")
+	fs := flags("index", stderr)
+	asJSON := fs.Bool("json", false, "print as JSON: kind, name and path of every place")
 	if err := parseFlags(fs, args); err != nil {
 		return exitUsage
+	}
+	if *asJSON {
+		places, err := svc.Places("", 0)
+		if err != nil {
+			return fail(stderr, err)
+		}
+		if err := emit(stdout, places); err != nil {
+			return fail(stderr, err)
+		}
+		return exitOK
 	}
 	idx, err := svc.Index()
 	if err != nil {
 		return fail(stderr, err)
-	}
-	if *asJSON {
-		if err := emit(stdout, idx); err != nil {
-			return fail(stderr, err)
-		}
-		return exitOK
 	}
 	for _, j := range idx.Journals {
 		fmt.Fprintln(stdout, "journal  "+j)
@@ -177,23 +231,58 @@ func cmdIndex(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 	return exitOK
 }
 
+// cmdPlaces ranks everywhere you could go against a query — the palette's
+// list, for a script.
+func cmdPlaces(args []string, stdout, stderr io.Writer, svc *app.Service) int {
+	fs := flags("places", stderr)
+	asJSON := fs.Bool("json", false, "print as JSON")
+	limit := fs.Int("n", 0, "how many at most")
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
+	}
+	places, err := svc.Places(strings.Join(fs.Args(), " "), *limit)
+	if err != nil {
+		return fail(stderr, err)
+	}
+	if *asJSON {
+		if err := emit(stdout, places); err != nil {
+			return fail(stderr, err)
+		}
+		return exitOK
+	}
+	for _, p := range places {
+		fmt.Fprintf(stdout, "%-8s %-30s %s\n", p.Kind, truncate(p.Name, 30), p.Rel)
+	}
+	return exitOK
+}
+
 // cmdView prints a page. Unlike `tlog open` it creates nothing: reading is not
 // a reason to write a file, and an agent surveying the notes must not leave
 // empty pages behind everywhere it looked.
 func cmdView(args []string, stdout, stderr io.Writer, svc *app.Service) int {
-	fs := flag.NewFlagSet("view", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flags("view", stderr)
 	asJSON := fs.Bool("json", false, "print the whole page as JSON, addresses included")
 	withAddr := fs.Bool("addr", false, "show each block's address")
+	day := fs.String("day", "", "a journal: today, yesterday, -1, fri, 2026-11-03")
 	if err := parseFlags(fs, args); err != nil {
 		return exitUsage
 	}
 	name := strings.Join(fs.Args(), " ")
-	if strings.TrimSpace(name) == "" {
-		name = svc.TodayRel()
+	if *day != "" && strings.TrimSpace(name) != "" {
+		fmt.Fprintln(stderr, "tlog view: a page or a day, not both")
+		return exitUsage
 	}
 
-	rel, err := resolveForReading(svc, name)
+	var rel string
+	var err error
+	switch {
+	case *day != "":
+		rel, err = svc.DayRel(*day)
+	case strings.TrimSpace(name) == "":
+		rel = svc.TodayRel()
+	default:
+		rel, err = svc.FindPage(name)
+	}
 	if err != nil {
 		return fail(stderr, err)
 	}
@@ -220,11 +309,28 @@ func cmdView(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 	}
 	fmt.Fprintln(stdout, head)
 	for _, b := range v.Blocks {
-		line := strings.Repeat("  ", b.Depth) + "- " + oneLine(b.Text)
+		indent := strings.Repeat("  ", b.Depth)
+		line := indent + "- " + oneLine(b.Text)
 		if *withAddr {
 			line = b.Addr.String() + "  " + line
 		}
 		fmt.Fprintln(stdout, line)
+		// What the file holds beside the text: its properties, and the
+		// deadline with how it stands. -json has always had them; a reader of
+		// the plain form should not have to guess.
+		for _, p := range b.Props {
+			if app.IsDeadlineKey(p.Key) {
+				continue
+			}
+			fmt.Fprintf(stdout, "%s  %s:: %s\n", indent, p.Key, p.Value)
+		}
+		if b.Due != "" {
+			state := b.DueLabel
+			if b.Task == "done" {
+				state = "done"
+			}
+			fmt.Fprintf(stdout, "%s  %s:: %s  (%s)\n", indent, app.DeadlineProp, b.Due, state)
+		}
 	}
 	if len(v.Refs) > 0 {
 		heads := 0
@@ -245,21 +351,202 @@ func cmdView(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 	return exitOK
 }
 
-// resolveForReading turns what was typed into a file, without creating one.
-// A path is taken as a path; anything else is a page name, which may be an
-// alias for a page actually called something else.
-func resolveForReading(svc *app.Service, name string) (string, error) {
-	if strings.HasSuffix(name, ".md") || strings.Contains(name, "/") {
-		return name, nil
+// cmdLinks resolves what a block points at.
+func cmdLinks(args []string, stdout, stderr io.Writer, svc *app.Service) int {
+	fs := flags("links", stderr)
+	asJSON := fs.Bool("json", false, "print as JSON")
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
 	}
-	rel, exists, err := svc.ResolvePage(name)
+	if fs.NArg() != 1 {
+		fmt.Fprintln(stderr, "tlog links: which block? give its address")
+		return exitUsage
+	}
+	a, err := app.ParseAddr(fs.Arg(0))
 	if err != nil {
-		return "", err
+		fmt.Fprintf(stderr, "tlog links: %v\n", err)
+		return exitUsage
 	}
-	if !exists {
-		return "", fmt.Errorf("no page called %q — `tlog open %s` would create it", name, name)
+	links, err := svc.Links(a)
+	if err != nil {
+		return fail(stderr, err)
 	}
-	return rel, nil
+	if *asJSON {
+		if err := emit(stdout, links); err != nil {
+			return fail(stderr, err)
+		}
+		return exitOK
+	}
+	for _, l := range links {
+		where := l.Resolved
+		switch {
+		case l.Error != "":
+			where = "refused: " + l.Error
+		case l.Addr != nil:
+			where = l.Addr.String()
+		case l.Kind == "page":
+			where = l.Rel
+			if !l.Exists {
+				where += "  (not created yet)"
+			}
+		}
+		fmt.Fprintf(stdout, "%-6s %-30s %s\n", l.Kind, truncate(l.Target, 30), where)
+	}
+	return exitOK
+}
+
+// cmdDate says what a typed shorthand means before anything is written with
+// it — the reason dates are refused rather than guessed at.
+func cmdDate(args []string, stdout, stderr io.Writer, _ *app.Service) int {
+	fs := flags("date", stderr)
+	asJSON := fs.Bool("json", false, "print as JSON")
+	limit := fs.Int("n", 8, "how many to offer")
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
+	}
+	input := strings.Join(fs.Args(), " ")
+	choices := app.DateChoices(input, *limit)
+	if len(choices) == 0 {
+		fmt.Fprintf(stderr, "tlog: %q is not a date I understand\n", input)
+		return exitRefused
+	}
+	if *asJSON {
+		if err := emit(stdout, choices); err != nil {
+			return fail(stderr, err)
+		}
+		return exitOK
+	}
+	for _, c := range choices {
+		fmt.Fprintf(stdout, "%-16s %s  %-10s %s\n", c.Phrase, c.ISO, c.Short, c.Label)
+	}
+	return exitOK
+}
+
+// cmdPeople lists every page tagged as a person.
+func cmdPeople(args []string, stdout, stderr io.Writer, svc *app.Service) int {
+	fs := flags("people", stderr)
+	asJSON := fs.Bool("json", false, "print as JSON")
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
+	}
+	people, err := svc.People()
+	if err != nil {
+		return fail(stderr, err)
+	}
+	if *asJSON {
+		if err := emit(stdout, people); err != nil {
+			return fail(stderr, err)
+		}
+		return exitOK
+	}
+	for _, p := range people {
+		fmt.Fprintln(stdout, p)
+	}
+	return exitOK
+}
+
+// cmdMentions is the @ menu: who or what a few letters could mean.
+func cmdMentions(args []string, stdout, stderr io.Writer, svc *app.Service) int {
+	fs := flags("mentions", stderr)
+	asJSON := fs.Bool("json", false, "print as JSON")
+	limit := fs.Int("n", 8, "how many at most")
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
+	}
+	items, err := svc.Mentions(strings.Join(fs.Args(), " "), *limit)
+	if err != nil {
+		return fail(stderr, err)
+	}
+	if *asJSON {
+		if err := emit(stdout, items); err != nil {
+			return fail(stderr, err)
+		}
+		return exitOK
+	}
+	for _, m := range items {
+		fmt.Fprintf(stdout, "%-7s %-30s %-24s %s\n", m.Kind, truncate(m.Name, 30), m.Insert, m.Detail)
+	}
+	return exitOK
+}
+
+// cmdCommands lists the slash commands, for `tlog block <addr> cmd`.
+func cmdCommands(args []string, stdout, stderr io.Writer, _ *app.Service) int {
+	fs := flags("commands", stderr)
+	asJSON := fs.Bool("json", false, "print as JSON")
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
+	}
+	cmds := app.Commands()
+	if *asJSON {
+		if err := emit(stdout, cmds); err != nil {
+			return fail(stderr, err)
+		}
+		return exitOK
+	}
+	for _, c := range cmds {
+		arg := ""
+		if c.Arg != "" {
+			arg = "<" + c.Arg + ">"
+		}
+		fmt.Fprintf(stdout, "%-10s %-12s %s\n", c.Name, arg, c.Hint)
+	}
+	return exitOK
+}
+
+// cmdSync reports where the notes stand with their remote.
+func cmdSync(args []string, stdout, stderr io.Writer, svc *app.Service) int {
+	fs := flags("sync", stderr)
+	asJSON := fs.Bool("json", false, "print as JSON")
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
+	}
+	st := svc.Sync()
+	if *asJSON {
+		if err := emit(stdout, st); err != nil {
+			return fail(stderr, err)
+		}
+		return exitOK
+	}
+	switch {
+	case !st.Remote:
+		fmt.Fprintln(stdout, "no remote: nothing is pushed")
+	case st.AutoPush:
+		fmt.Fprintln(stdout, "pushing on every commit")
+	default:
+		fmt.Fprintln(stdout, "pushing is manual: tlog push")
+	}
+	if st.LastErr != "" {
+		fmt.Fprintf(stdout, "last push failed: %s\n", st.LastErr)
+	}
+	return exitOK
+}
+
+// cmdUndo takes back the last thing tlog committed, for a script that has no
+// session to keep an undo history in.
+func cmdUndo(args []string, stdout, stderr io.Writer, svc *app.Service) int {
+	fs := flags("undo", stderr)
+	asJSON := fs.Bool("json", false, "print as JSON")
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
+	}
+	if fs.NArg() > 1 {
+		fmt.Fprintln(stderr, "tlog undo: one file, or none for the last thing tlog committed")
+		return exitUsage
+	}
+	done, err := svc.UndoCommitted(fs.Arg(0))
+	if err != nil {
+		return fail(stderr, err)
+	}
+	if *asJSON {
+		if err := emit(stdout, done); err != nil {
+			return fail(stderr, err)
+		}
+		return exitOK
+	}
+	for _, rel := range done.Rels {
+		fmt.Fprintf(stdout, "undone  %s\n", rel)
+	}
+	return exitOK
 }
 
 // oneLine flattens a block for a line-per-block listing.

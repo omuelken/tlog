@@ -3,10 +3,8 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/tilman-schieber/tlog/internal/app"
@@ -21,33 +19,52 @@ var Version = "0.1.0-dev"
 const usage = `tlog — a markdown-first knowledge outliner
 
 usage:
-  tlog                      open today's journal in the outliner
-  tlog edit <page>          open a page, or a day like 2026-11-03, in the outliner
-  tlog today                print the path of today's journal
-  tlog open <page>          print the path of a page, creating it if needed
-  tlog add [-p page] text   append a block to today's journal, or to a page
-  tlog add -todo [-due d] t add an open task to today's journal, with a deadline
-  tlog todo [-json]         every open task, dated first, then the undated ones
-  tlog import [-from dir]   import a Logseq graph into the notes directory
-  tlog config [key value]   show the settings, or change one
-  tlog attach FILE...       put files on the ~/.att shelf and link them here
-  tlog files [query]        what is on the shelf, newest first
-  tlog due [-all]           what is dated and still open, soonest first
-  tlog push [-auto on|off]  push the notes now, or set pushing on every commit
-  tlog version              print the version
+  tlog                        open today's journal in the outliner
+  tlog edit <page>            open a page, or a day like 2026-11-03, in the outliner
+  tlog today                  print the path of today's journal
+  tlog open <page>            print the path of a page, creating it if needed
+  tlog add [-p page] <text>   append a block to today's journal, or to a page
+  tlog add -todo [-due d] <t> add an open task, with a deadline; -p for a page
+  tlog todo                   every open task, dated first, then the undated ones
+  tlog due [-all]             what is dated and still open, soonest first
+  tlog attach [-p page] FILE  put files on the ~/.att shelf and link them here
+  tlog attach -link-only FILE shelve a file and print its link, writing no note
+  tlog files [query] [-links] what is on the shelf, newest first
+  tlog alias <page> <name>    give a page another name
+  tlog config                 the settings; <key> reads one, <key> <value> sets it
+  tlog push [-auto on|off]    push the notes now, or set pushing on every commit
+  tlog sync                   where the notes stand with their remote
+  tlog import [-from dir]     import a Logseq graph into the notes directory
+  tlog version                print the version
 
-for scripts and agents:
-  tlog search <query>       find blocks; -json gives an address for each
-  tlog view [page]          print a page; -addr shows addresses, -json all of it
-  tlog index                every journal, page and tag
-  tlog block <addr> <op>    change one block — see: tlog block help
+for scripts and agents (every one takes -json; writes print the new address):
+  tlog search <query> [-n N]  find blocks, each with an address
+  tlog view [page] [-day d]   print a page, or a day: -day yesterday, -day -1
+  tlog view ... -addr         ...with an address per block
+  tlog block <addr>           print one block
+  tlog block <addr> <op> ...  change one block — see: tlog block help
+  tlog append <rel> [-if-match hash] <text>
+                              add a block at the end of a file
+  tlog links <addr>           where a block's links go
+  tlog index                  every journal, page and tag; -json gives paths
+  tlog places [query]         the same, ranked against a query
+  tlog date [shorthand]       what a typed date means before writing it
+  tlog people                 every page tagged #person
+  tlog mentions <query>       who or what a few letters could mean
+  tlog commands               the slash commands, for: tlog block <addr> cmd
+  tlog undo [rel]             take back the last thing tlog committed
 
-Every read that can be acted on carries an address, and every write takes one.
-The address holds the hash of the file it was read from, so a write from a
-stale read is refused rather than landing in the wrong place. Exit codes say
-which: 3 the move does not exist, 4 the file moved since you read it.
+An address is pages/Note.md:42@9f3a2b1c8d4e5f60 — the file, where the block
+starts, and the hash of the file it was read from. A write from a stale read
+is refused rather than landing in the wrong place. Text may be "-" to read it
+from standard input. Flags may come before or after the arguments; what
+follows "--" is never a flag.
 
-global flags:
+exit codes: 0 done · 1 something went wrong · 2 not a command, operation or
+address · 3 that does not exist, retrying will not help · 4 the file moved
+since you read it, read again and retry
+
+global flags, before the command:
   -dir <path>   notes directory (default $TLOG_DIR, else ~/notes)
 
 The notes directory is plain markdown and a git repository. Nothing here owns
@@ -67,13 +84,13 @@ func Main(args []string, stdout, stderr io.Writer) int {
 			dir, rest = strings.TrimPrefix(rest[0], "-dir="), rest[1:]
 		case rest[0] == "-h" || rest[0] == "--help" || rest[0] == "-help":
 			fmt.Fprint(stdout, usage)
-			return 0
+			return exitOK
 		case rest[0] == "-v" || rest[0] == "--version":
 			fmt.Fprintln(stdout, Version)
-			return 0
+			return exitOK
 		default:
 			fmt.Fprintf(stderr, "tlog: unknown flag %s\n\n%s", rest[0], usage)
-			return 2
+			return exitUsage
 		}
 	}
 
@@ -85,7 +102,16 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	svc, err := app.New(dir)
 	if err != nil {
 		fmt.Fprintf(stderr, "tlog: %v\n", err)
-		return 1
+		return exitError
+	}
+
+	commands := map[string]func([]string, io.Writer, io.Writer, *app.Service) int{
+		"todo": cmdTodo, "add": cmdAdd, "import": cmdImport, "push": cmdPush,
+		"due": cmdDue, "attach": cmdAttach, "config": cmdConfig, "files": cmdFiles,
+		"search": cmdSearch, "view": cmdView, "index": cmdIndex, "block": cmdBlock,
+		"alias": cmdAlias, "commands": cmdCommands, "date": cmdDate, "people": cmdPeople,
+		"mentions": cmdMentions, "links": cmdLinks, "undo": cmdUndo, "append": cmdAppend,
+		"sync": cmdSync, "places": cmdPlaces,
 	}
 
 	switch cmd {
@@ -103,18 +129,13 @@ func Main(args []string, stdout, stderr io.Writer) int {
 			}
 			return tui.Run(svc, rel)
 		})
-	case "todo":
-		return cmdTodo(rest, stdout, stderr, svc)
 	case "today":
-		return run(stderr, svc, func() error {
-			rel := svc.TodayRel()
-			fmt.Fprintln(stdout, svc.Store.Abs(rel))
-			return nil
-		})
+		fmt.Fprintln(stdout, svc.Store.Abs(svc.TodayRel()))
+		return exitOK
 	case "open":
 		if len(rest) == 0 {
 			fmt.Fprintln(stderr, "tlog open: which page?")
-			return 2
+			return exitUsage
 		}
 		return run(stderr, svc, func() error {
 			rel, err := svc.OpenPage(strings.Join(rest, " "))
@@ -124,38 +145,18 @@ func Main(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stdout, svc.Store.Abs(rel))
 			return nil
 		})
-	case "add":
-		return cmdAdd(rest, stdout, stderr, svc)
-	case "import":
-		return cmdImport(rest, stdout, stderr, svc)
-	case "push":
-		return cmdPush(rest, stdout, stderr, svc)
-	case "due":
-		return cmdDue(rest, stdout, stderr, svc)
-	case "attach":
-		return cmdAttach(rest, stdout, stderr, svc)
-	case "config":
-		return cmdConfig(rest, stdout, stderr, svc)
-	case "files":
-		return cmdFiles(rest, stdout, stderr, svc)
-	case "search":
-		return cmdSearch(rest, stdout, stderr, svc)
-	case "view":
-		return cmdView(rest, stdout, stderr, svc)
-	case "index":
-		return cmdIndex(rest, stdout, stderr, svc)
-	case "block":
-		return cmdBlock(rest, stdout, stderr, svc)
 	case "version":
 		fmt.Fprintln(stdout, Version)
-		return 0
+		return exitOK
 	case "help":
 		fmt.Fprint(stdout, usage)
-		return 0
-	default:
-		fmt.Fprintf(stderr, "tlog: unknown command %q\n\n%s", cmd, usage)
-		return 2
+		return exitOK
 	}
+	if fn, ok := commands[cmd]; ok {
+		return fn(rest, stdout, stderr, svc)
+	}
+	fmt.Fprintf(stderr, "tlog: unknown command %q\n\n%s", cmd, usage)
+	return exitUsage
 }
 
 // run executes an operation and flushes the auto-commit, so that a one-shot
@@ -166,65 +167,134 @@ func run(stderr io.Writer, svc *app.Service, fn func() error) int {
 		fmt.Fprintf(stderr, "tlog: %v\n", cerr)
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "tlog: %v\n", err)
-		return 1
+		return fail(stderr, err)
 	}
-	return 0
+	return exitOK
 }
 
 func cmdAdd(args []string, stdout, stderr io.Writer, svc *app.Service) int {
-	fs := flag.NewFlagSet("add", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flags("add", stderr)
 	page := fs.String("p", "", "append to this page instead of today's journal")
 	fs.StringVar(page, "page", "", "append to this page instead of today's journal")
 	todo := fs.Bool("todo", false, "make it an open task")
 	due := fs.String("due", "", "a deadline for the task: fri, in 3 days, 12.11, 2026-11-12")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	if (*todo || *due != "") && *page != "" {
-		fmt.Fprintln(stderr, "tlog add: a task goes into today's journal; -todo and -p do not mix")
-		return 2
+	asJSON := fs.Bool("json", false, "print the new block's address as JSON")
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
 	}
 
-	text := strings.Join(fs.Args(), " ")
-	if strings.TrimSpace(text) == "" {
-		// No argument: read the block from stdin, so that piping works.
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
+	text, err := textFrom(fs.Args())
+	if err != nil {
+		fmt.Fprintf(stderr, "tlog add: %v\n", err)
+		return exitError
+	}
+	if strings.TrimSpace(text) == "" && fs.NArg() == 0 {
+		// No argument at all: the block comes from stdin, so that piping works.
+		if text, err = textFrom([]string{"-"}); err != nil {
 			fmt.Fprintf(stderr, "tlog add: %v\n", err)
-			return 1
+			return exitError
 		}
-		text = strings.TrimRight(string(data), "\n")
 	}
 	if strings.TrimSpace(text) == "" {
 		fmt.Fprintln(stderr, "tlog add: nothing to add")
-		return 2
+		return exitUsage
 	}
 
-	return run(stderr, svc, func() error {
-		var rel string
-		var err error
-		if *todo || *due != "" {
-			rel, err = svc.AddTodo(text, *due)
-		} else if *page != "" {
-			rel, err = svc.AddToPage(*page, text)
-		} else {
-			rel, err = svc.AddToday(text)
-		}
+	rel := svc.TodayRel()
+	if *page != "" {
+		r, _, err := svc.ResolvePage(*page)
 		if err != nil {
-			return err
+			return fail(stderr, err)
 		}
-		fmt.Fprintln(stdout, svc.Store.Abs(rel))
-		return nil
-	})
+		rel = r
+	}
+	var res *app.Result
+	if *todo || *due != "" {
+		res, err = svc.AddTodoTo(rel, text, *due)
+	} else {
+		res, err = svc.Add(rel, text)
+	}
+	if err != nil {
+		settle(stderr, svc)
+		return fail(stderr, err)
+	}
+	if *asJSON {
+		return report(stdout, stderr, svc, res, true)
+	}
+	settle(stderr, svc)
+	fmt.Fprintln(stdout, svc.Store.Abs(res.Rel))
+	return exitOK
 }
 
-// settable is every key the config menus and `tlog config` can change, with
-// how to read a typed value. Keeping it in one list is what makes the two
-// menus and the command agree about what exists.
+// cmdAppend adds a block at the end of a file, guarded by the file's hash when
+// one is given — the form a script uses when it has read the page and wants
+// to be sure nothing moved in between.
+func cmdAppend(args []string, stdout, stderr io.Writer, svc *app.Service) int {
+	fs := flags("append", stderr)
+	ifMatch := fs.String("if-match", "", "the file's hash as last read; refused if it moved")
+	asJSON := fs.Bool("json", false, "print the new block's address as JSON")
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
+	}
+	if fs.NArg() < 2 {
+		fmt.Fprintln(stderr, "tlog append: which file, and what? tlog append journals/2026-11-03.md \"the text\"")
+		return exitUsage
+	}
+	text, err := textFrom(fs.Args()[1:])
+	if err != nil {
+		fmt.Fprintf(stderr, "tlog append: %v\n", err)
+		return exitError
+	}
+	if strings.TrimSpace(text) == "" {
+		fmt.Fprintln(stderr, "tlog append: nothing to add")
+		return exitUsage
+	}
+	res, err := svc.AppendBlock(fs.Arg(0), *ifMatch, text)
+	if err != nil {
+		return fail(stderr, err)
+	}
+	return report(stdout, stderr, svc, res, *asJSON)
+}
+
+// cmdAlias gives a page another name, the way /alias does from inside it.
+func cmdAlias(args []string, stdout, stderr io.Writer, svc *app.Service) int {
+	fs := flags("alias", stderr)
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
+	}
+	if fs.NArg() < 2 {
+		fmt.Fprintln(stderr, "tlog alias: which page, and what name? tlog alias \"Ada Lovelace\" Ada")
+		return exitUsage
+	}
+	rel, err := svc.FindPage(fs.Arg(0))
+	if err != nil {
+		return fail(stderr, err)
+	}
+	alias := strings.Join(fs.Args()[1:], " ")
+	if err := svc.AddAlias(rel, alias); err != nil {
+		return fail(stderr, err)
+	}
+	settle(stderr, svc)
+	fmt.Fprintf(stdout, "%s is also %s\n", fs.Arg(0), alias)
+	return exitOK
+}
+
+// cmdConfig shows the settings, reads one, or changes one. The list is the
+// core's: the same one the outliner and the window show.
 func cmdConfig(args []string, stdout, stderr io.Writer, svc *app.Service) int {
-	if len(args) == 0 {
+	fs := flags("config", stderr)
+	asJSON := fs.Bool("json", false, "print the settings as JSON")
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
+	}
+	rest := fs.Args()
+	if len(rest) == 0 {
+		if *asJSON {
+			if err := emit(stdout, svc.Settings()); err != nil {
+				return fail(stderr, err)
+			}
+			return exitOK
+		}
 		fmt.Fprintf(stdout, "# %s", svc.ConfigPath())
 		if !config.Exists() {
 			fmt.Fprint(stdout, "  (not written yet — these are the defaults)")
@@ -244,70 +314,105 @@ func cmdConfig(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 		}
 		if svc.CfgErr != nil {
 			fmt.Fprintf(stderr, "\ntlog: %v\n", svc.CfgErr)
-			return 1
+			return exitError
 		}
-		return 0
+		return exitOK
 	}
-	if len(args) == 1 {
-		fmt.Fprintln(stderr, "tlog config: give a value, or no arguments to see everything")
-		return 2
+	if len(rest) == 1 {
+		for _, st := range svc.Settings() {
+			if st.Key == rest[0] {
+				if *asJSON {
+					if err := emit(stdout, st); err != nil {
+						return fail(stderr, err)
+					}
+					return exitOK
+				}
+				fmt.Fprintln(stdout, st.Value)
+				return exitOK
+			}
+		}
+		fmt.Fprintf(stderr, "tlog: no such setting: %s\n", rest[0])
+		return exitUsage
 	}
 
-	note, err := svc.SetSetting(args[0], strings.Join(args[1:], " "))
+	value := strings.Join(rest[1:], " ")
+	note, err := svc.SetSetting(rest[0], value)
 	if err != nil {
 		fmt.Fprintf(stderr, "tlog: %v\n", err)
-		return 2
+		return exitUsage
 	}
-	fmt.Fprintf(stdout, "%s is now %s\n", args[0], strings.Join(args[1:], " "))
+	if *asJSON {
+		if err := emit(stdout, map[string]any{"settings": svc.Settings(), "note": note}); err != nil {
+			return fail(stderr, err)
+		}
+		return exitOK
+	}
+	fmt.Fprintf(stdout, "%s is now %s\n", rest[0], value)
 	if note != "" {
 		fmt.Fprintf(stdout, "(%s)\n", note)
 	}
-	return 0
+	return exitOK
 }
 
 func cmdAttach(args []string, stdout, stderr io.Writer, svc *app.Service) int {
-	fs := flag.NewFlagSet("attach", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flags("attach", stderr)
 	page := fs.String("p", "", "attach to this page instead of today's journal")
 	only := fs.Bool("link-only", false, "put the file on the shelf and print the link, writing no note")
-	if err := fs.Parse(args); err != nil {
-		return 2
+	asJSON := fs.Bool("json", false, "print what was attached as JSON")
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
 	}
 	if fs.NArg() == 0 {
 		fmt.Fprintln(stderr, "tlog attach: which file?")
-		return 2
+		return exitUsage
 	}
 
-	return run(stderr, svc, func() error {
+	rel := svc.TodayRel()
+	if *page != "" && !*only {
+		r, _, err := svc.ResolvePage(*page)
+		if err != nil {
+			return fail(stderr, err)
+		}
+		rel = r
+	}
+	var added []app.AttachView
+	var err error
+	if *only {
+		added, err = svc.Attach(fs.Args()...)
+	} else {
+		added, err = svc.AttachTo(rel, fs.Args()...)
+	}
+	settle(stderr, svc)
+	if *asJSON {
+		if added == nil {
+			added = []app.AttachView{}
+		}
+		if eerr := emit(stdout, added); eerr != nil {
+			return fail(stderr, eerr)
+		}
+		if err != nil {
+			return fail(stderr, err)
+		}
+		return exitOK
+	}
+	for _, a := range added {
 		if *only {
-			added, err := svc.Attach(fs.Args()...)
-			for _, a := range added {
-				fmt.Fprintln(stdout, a.Link)
-			}
-			return err
-		}
-		rel := svc.TodayRel()
-		if *page != "" {
-			r, _, err := svc.ResolvePage(*page)
-			if err != nil {
-				return err
-			}
-			rel = r
-		}
-		added, err := svc.AttachTo(rel, fs.Args()...)
-		for _, a := range added {
+			fmt.Fprintln(stdout, a.Link)
+		} else {
 			fmt.Fprintf(stdout, "%s  %s\n", a.Name, a.Size)
 		}
-		if err == nil && len(added) > 0 {
-			fmt.Fprintln(stdout, svc.Store.Abs(rel))
-		}
-		return err
-	})
+	}
+	if err != nil {
+		return fail(stderr, err)
+	}
+	if !*only && len(added) > 0 {
+		fmt.Fprintln(stdout, svc.Store.Abs(rel))
+	}
+	return exitOK
 }
 
 func cmdFiles(args []string, stdout, stderr io.Writer, svc *app.Service) int {
-	fs := flag.NewFlagSet("files", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flags("files", stderr)
 	links := fs.Bool("links", false, "print the Markdown links instead of a table")
 	asJSON := fs.Bool("json", false, "print as JSON")
 	if err := parseFlags(fs, args); err != nil {
@@ -326,7 +431,7 @@ func cmdFiles(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 	}
 	if len(items) == 0 {
 		fmt.Fprintf(stdout, "nothing on the shelf at %s\n", svc.AttachDir())
-		return 0
+		return exitOK
 	}
 	for _, a := range items {
 		if *links {
@@ -335,12 +440,11 @@ func cmdFiles(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 		}
 		fmt.Fprintf(stdout, "%s  %9s  %s\n", a.When, a.Size, a.Name)
 	}
-	return 0
+	return exitOK
 }
 
 func cmdDue(args []string, stdout, stderr io.Writer, svc *app.Service) int {
-	fs := flag.NewFlagSet("due", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flags("due", stderr)
 	all := fs.Bool("all", false, "include what is already done")
 	asJSON := fs.Bool("json", false, "print as JSON, with an address for each")
 	if err := parseFlags(fs, args); err != nil {
@@ -359,30 +463,23 @@ func cmdDue(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 	}
 	if len(items) == 0 {
 		fmt.Fprintln(stdout, "nothing dated is open")
-		return 0
+		return exitOK
 	}
 	for _, it := range items {
 		mark := " "
 		if it.Done {
 			mark = "x"
 		}
-		flag := " "
-		if it.State == "overdue" {
-			flag = "!"
-		} else if it.State == "today" {
-			flag = "*"
-		}
 		fmt.Fprintf(stdout, "%s [%s] %-11s %-18s %s  (%s)\n",
-			flag, mark, it.Due, truncate(it.Label, 18), truncate(it.Text, 60), it.Page)
+			urgency(it.State), mark, it.Due, truncate(it.Label, 18), truncate(it.Text, 60), it.Page)
 	}
-	return 0
+	return exitOK
 }
 
 // cmdTodo lists every open task. With -json each carries an address, which is
-// what a bar widget needs to tick one off with `tlog block <addr> task`.
+// what a bar widget needs to tick one off with `tlog block <addr> done`.
 func cmdTodo(args []string, stdout, stderr io.Writer, svc *app.Service) int {
-	fs := flag.NewFlagSet("todo", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flags("todo", stderr)
 	asJSON := fs.Bool("json", false, "print as JSON, with an address for each")
 	if err := parseFlags(fs, args); err != nil {
 		return exitUsage
@@ -392,9 +489,6 @@ func cmdTodo(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 		return fail(stderr, err)
 	}
 	if *asJSON {
-		if items == nil {
-			items = []app.DueItem{} // [] rather than null, for whoever parses it
-		}
 		if err := emit(stdout, items); err != nil {
 			return fail(stderr, err)
 		}
@@ -402,19 +496,24 @@ func cmdTodo(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 	}
 	if len(items) == 0 {
 		fmt.Fprintln(stdout, "nothing to do")
-		return 0
+		return exitOK
 	}
 	for _, it := range items {
-		flag := " "
-		if it.State == "overdue" {
-			flag = "!"
-		} else if it.State == "today" {
-			flag = "*"
-		}
 		fmt.Fprintf(stdout, "%s [ ] %-11s %-18s %s  (%s)\n",
-			flag, it.Due, truncate(it.Label, 18), truncate(it.Text, 60), it.Page)
+			urgency(it.State), it.Due, truncate(it.Label, 18), truncate(it.Text, 60), it.Page)
 	}
-	return 0
+	return exitOK
+}
+
+// urgency is the one-character flag in front of a dated line.
+func urgency(state string) string {
+	switch state {
+	case "overdue":
+		return "!"
+	case "today":
+		return "*"
+	}
+	return " "
 }
 
 func truncate(s string, n int) string {
@@ -426,55 +525,46 @@ func truncate(s string, n int) string {
 }
 
 func cmdPush(args []string, stdout, stderr io.Writer, svc *app.Service) int {
-	fs := flag.NewFlagSet("push", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flags("push", stderr)
 	auto := fs.String("auto", "", "turn pushing on every commit on or off")
-	if err := fs.Parse(args); err != nil {
-		return 2
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
 	}
 
 	if *auto != "" {
-		on := *auto == "on" || *auto == "true" || *auto == "yes"
-		if !on && *auto != "off" && *auto != "false" && *auto != "no" {
+		on, err := app.ParseBool(*auto)
+		if err != nil {
 			fmt.Fprintf(stderr, "tlog push: -auto takes on or off, not %q\n", *auto)
-			return 2
+			return exitUsage
 		}
 		if err := svc.SetAutoPush(on); err != nil {
-			fmt.Fprintf(stderr, "tlog: %v\n", err)
-			return 1
+			return fail(stderr, err)
 		}
 		if on {
-			fmt.Fprintf(stdout, "pushing on every commit, to %s\n", svc.Store.Root)
+			fmt.Fprintf(stdout, "pushing on every commit, to %s\n", svc.Git.Remote())
 		} else {
 			fmt.Fprintln(stdout, "pushing is now manual")
 		}
-		return 0
+		return exitOK
 	}
 
-	st := svc.Sync()
-	if !st.Remote {
-		fmt.Fprintf(stderr, "tlog: no remote; add one with `git -C %s remote add origin <url>`\n", svc.Store.Root)
-		return 1
+	if !svc.Sync().Remote {
+		fmt.Fprintln(stderr, "tlog: no remote; set one with `tlog config git.remote <url>`")
+		return exitError
 	}
-	if err := svc.Commit(); err != nil {
-		fmt.Fprintf(stderr, "tlog: %v\n", err)
-		return 1
-	}
-	if err := svc.Push(); err != nil {
-		fmt.Fprintf(stderr, "tlog: %v\n", err)
-		return 1
+	if err := svc.PushNow(); err != nil {
+		return fail(stderr, err)
 	}
 	fmt.Fprintln(stdout, "pushed")
-	return 0
+	return exitOK
 }
 
 func cmdImport(args []string, stdout, stderr io.Writer, svc *app.Service) int {
-	fs := flag.NewFlagSet("import", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs := flags("import", stderr)
 	from := fs.String("from", "", "Logseq graph directory (default ~/logseq)")
 	dry := fs.Bool("dry-run", false, "report what would happen without writing")
-	if err := fs.Parse(args); err != nil {
-		return 2
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
 	}
 
 	return run(stderr, svc, func() error {

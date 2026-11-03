@@ -5,7 +5,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -1385,17 +1384,13 @@ func (m *Model) openPalette() {
 		add(pickItem{label: store.Title(today), detail: "today", rel: today})
 	}
 	items = append(items, m.commands()...)
-	idx := l.Index()
-	// Newest first: last week's journal is wanted far more often than one
-	// from two years ago.
-	for i := len(idx.Journals) - 1; i >= 0; i-- {
-		name := idx.Journals[i]
-		add(pickItem{label: name, detail: "journal",
-			rel: filepath.Join(store.JournalsDir, name+".md")})
-	}
-	for _, name := range idx.Pages {
-		add(pickItem{label: name, detail: "page",
-			rel: filepath.Join(store.PagesDir, name+".md")})
+	// The core's list of places, journals newest first, so the palette, the
+	// window and `tlog places` offer the same things in the same order.
+	for _, p := range l.Places("", 0) {
+		if p.Rel == "" {
+			continue // a tag has no file to go to from here
+		}
+		add(pickItem{label: p.Name, detail: p.Kind, rel: p.Rel})
 	}
 	m.pick = newPicker("go to", items)
 	m.pick.creates = true
@@ -1438,7 +1433,7 @@ func (m *Model) refreshSearch() {
 	items := make([]pickItem, 0, len(hits))
 	for _, h := range hits {
 		items = append(items, pickItem{
-			label: h.Text, detail: h.Page, rel: h.Rel, offset: h.Offset,
+			label: h.FirstLine, detail: h.Page, rel: h.Rel, offset: h.Offset,
 		})
 	}
 	m.pick.items = items

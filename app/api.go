@@ -195,12 +195,7 @@ func (a *API) ToggleTask(rel string, offset int, hash string) (*Edit, error) {
 func (a *API) Sync() tapp.SyncStatus { return a.svc.Sync() }
 
 // Push sends the notes now.
-func (a *API) Push() error {
-	if err := a.svc.Commit(); err != nil {
-		return err
-	}
-	return a.svc.Push()
-}
+func (a *API) Push() error { return a.svc.PushNow() }
 
 // onClose flushes the pending auto-commit, so quitting never leaves work
 // uncommitted in the notes repository.

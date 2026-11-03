@@ -223,9 +223,19 @@ func boolStr(b bool) string {
 }
 
 func parseBool(v string) (bool, error) {
-	b, err := strconv.ParseBool(strings.ToLower(v))
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "on", "yes":
+		return true, nil
+	case "off", "no":
+		return false, nil
+	}
+	b, err := strconv.ParseBool(strings.ToLower(strings.TrimSpace(v)))
 	if err != nil {
 		return false, fmt.Errorf("%q is not true or false", v)
 	}
 	return b, nil
 }
+
+// ParseBool reads a yes or a no however it was typed: true, on, yes, 1 and
+// their opposites. Shared so that no adapter keeps a list of its own.
+func ParseBool(v string) (bool, error) { return parseBool(v) }

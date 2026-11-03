@@ -7,7 +7,7 @@ import qs.Ui
 import "Model.js" as Model
 
 // The list of open todos and the quick-capture field. Everything goes through
-// the tlog command line — `tlog todo -json` to read, `tlog block <addr> task`
+// the tlog command line — `tlog todo -json` to read, `tlog block <addr> done`
 // to tick off, `tlog add -todo` to capture — so this widget never parses a note
 // and never writes one itself. Each address carries the hash of the file it was
 // read from, so ticking off a task that changed in the meantime is refused by
@@ -202,7 +202,7 @@ Panel {
     var t = Object.assign({}, ticking)
     t[item.addr] = true
     ticking = t
-    run([root.tlog, "block", item.addr, "task"], function(code, err) {
+    run([root.tlog, "block", item.addr, "done"], function(code, err) {
       if (code === 4) root.say("That changed on disk — here is the list as it is now.", true)
       else if (code !== 0) root.say(err || "could not tick it off", true)
       // Let the strike-through be seen before the row goes.

@@ -331,6 +331,7 @@ with where each one came from.
 
 ```sh
 tlog config                                # everything, and its current value
+tlog config attachments.sanitize           # read one
 tlog config attachments.sanitize true      # change one
 ```
 
@@ -501,9 +502,14 @@ are adapters over the same core. Reads hand back an address; writes take one.
 ```sh
 tlog search lecture -json      # hits, each with an address
 tlog view Timetable -addr      # a page, with an address per block
-tlog index -json               # every journal, page and tag
+tlog view -day yesterday       # a journal, by day: today, -1, fri, 2026-11-03
+tlog index -json               # every journal, page and tag, with paths
 tlog due -json                 # the agenda, addressable
+tlog block <addr>              # one block: text, properties, deadline
 tlog block <addr> <operation>  # change one block
+tlog links <addr> -json        # where a block's links go
+tlog add -json "a thought"     # writes print the new block's address too
+tlog append <rel> -if-match <hash> "text"   # at the end of a file, guarded
 ```
 
 An address is `pages/Note.md:42@9f3a2b1c8d4e5f60` — the file, where the block
@@ -515,14 +521,27 @@ after it, so one call chains into the next:
 
 ```sh
 addr=$(tlog search "plan the lecture" -json | jq -r '.[0].addr')
-addr=$(tlog block "$addr" task)                      # [ ] plan the lecture
-addr=$(tlog block "$addr" prop Deadline 2026-10-01)  # now on the agenda
+addr=$(tlog block "$addr" open)                      # [ ] plan the lecture
+addr=$(tlog block "$addr" deadline 2026-10-01)       # now on the agenda
         tlog block "$addr" after -child "book the room"
 ```
 
-The operations are `text`, `after [-child]`, `before`, `split`, `merge`,
-`indent`, `outdent`, `up`, `down`, `task`, `prop`, `ref`, `delete` — see
-`tlog block help`.
+The operations are `text`, `after [-child]`, `before`, `split [-child]`,
+`merge`, `indent`, `outdent`, `up`, `down`, `task`, `open`, `done`,
+`deadline`, `quote`, `prop`, `cmd`, `ref`, `delete` — see `tlog block help`.
+`task` toggles; `open` and `done` do not, so a retried command lands where it
+meant to. `cmd <name> [arg]` runs any slash command by name, the same code the
+menus run; `tlog commands` lists them. Text may be `-` to read it from standard
+input, for a block of several lines. Flags go before or after the arguments;
+what follows `--` is never a flag.
+
+The rest of what a person can do has a command too: `tlog date fri` says what
+a shorthand means before it is written; `tlog people` and `tlog mentions jr`
+find who is meant, so a script writes `[[Julia Rausenberger]]` rather than a
+misspelling that makes a new page; `tlog alias <page> <name>`, `tlog places
+<query>`, `tlog sync`, `tlog config <key>`; and `tlog undo [rel]` takes back
+the last thing tlog committed, through git, refusing if the file has changed
+by hand since.
 
 **The exit code says which kind of no it was**, so a caller knows whether
 reading again would help:
@@ -532,7 +551,7 @@ reading again would help:
 | `0` | done |
 | `1` | something went wrong |
 | `2` | that is not a command, an operation or an address |
-| `3` | the move does not exist — outdenting a top-level block. Retrying will not help. |
+| `3` | that does not exist — outdenting a top-level block, a page nobody made, a date nobody can read. Retrying will not help. |
 | `4` | the file moved since you read it. Read again and retry. |
 
 Nothing here is a special agent mode: `tlog block` is the same `app.Service`

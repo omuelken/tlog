@@ -144,7 +144,7 @@ func (s *Service) RunCommand(a Addr, name, arg, text string, from, to int) (*Com
 	if cmd.TakesDate() {
 		d, ok := dates.Parse(arg, time.Now())
 		if !ok {
-			return nil, fmt.Errorf("%q is not a date I understand", arg)
+			return nil, refuse("%q is not a date I understand", arg)
 		}
 		due = d
 	}
@@ -166,11 +166,8 @@ func (s *Service) RunCommand(a Addr, name, arg, text string, from, to int) (*Com
 	var alias string
 	if cmd.Name == "alias" {
 		alias = strings.TrimSpace(arg)
-		if alias == "" {
-			return nil, fmt.Errorf("which name? try /alias Ada")
-		}
-		if strings.ContainsAny(alias, "[]#\n") {
-			return nil, fmt.Errorf("%q cannot be a page name", alias)
+		if err := checkAlias(alias); err != nil {
+			return nil, err
 		}
 	}
 
@@ -268,6 +265,33 @@ func (s *Service) RunCommand(a Addr, name, arg, text string, from, to int) (*Com
 	return &CommandResult{Result: res, Caret: caret}, nil
 }
 
+// checkAlias is what may be another name for a page.
+func checkAlias(alias string) error {
+	if alias == "" {
+		return fmt.Errorf("which name? try /alias Ada")
+	}
+	if strings.ContainsAny(alias, "[]#\n") {
+		return fmt.Errorf("%q cannot be a page name", alias)
+	}
+	return nil
+}
+
+// ApplyCommand runs a slash command on a block from outside an editor, where
+// there is no "/name arg" typed into the text to cut out. What a command would
+// insert — a date, a file link — goes at the end of the block's text; what it
+// changes about the block happens as it would from the menu.
+func (s *Service) ApplyCommand(a Addr, name, arg string) (*CommandResult, error) {
+	if _, ok := FindCommand(name); !ok {
+		return nil, refuse("no such command: /%s", name)
+	}
+	_, b, err := s.Resolve(a)
+	if err != nil {
+		return nil, err
+	}
+	end := len([]rune(b.Text))
+	return s.RunCommand(a, name, arg, b.Text, end, end)
+}
+
 // setDeadline writes the date, replacing whatever spelling of the property was
 // already there so a block never ends up with two.
 func setDeadline(b *markdown.Block, due time.Time, prop string) {
@@ -279,8 +303,11 @@ func setDeadline(b *markdown.Block, due time.Time, prop string) {
 	b.SetProp(prop, dates.Format(due))
 }
 
-// isDeadlineKey accepts every spelling, whatever the setting says to write, so
-// that changing the setting never orphans what is already in the notes.
+// IsDeadlineKey accepts every spelling, whatever the setting says to write, so
+// that changing the setting never orphans what is already in the notes. An
+// adapter that draws a deadline in its own way hides the same set.
+func IsDeadlineKey(k string) bool { return isDeadlineKey(k) }
+
 func isDeadlineKey(k string) bool {
 	return strings.EqualFold(k, DeadlineProp) || strings.EqualFold(k, "due") ||
 		strings.EqualFold(k, "deadline") || strings.EqualFold(k, "fällig")

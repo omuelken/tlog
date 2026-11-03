@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -230,14 +231,15 @@ func (s *Service) OpenPage(name string) (string, error) {
 
 // Add appends a block to a file, creating the file if necessary. Nested text is
 // supported: a multi-line string becomes one multi-line block, which is what
-// pasting a snippet into a journal should do.
-func (s *Service) Add(rel, text string) (*markdown.Block, error) {
+// pasting a snippet into a journal should do. It returns where the block
+// landed, so that the next operation can be addressed to it.
+func (s *Service) Add(rel, text string) (*Result, error) {
 	return s.addWith(rel, text, nil)
 }
 
 // addWith is Add with a chance to shape the block — make it a task, give it a
 // deadline — before the one write.
-func (s *Service) addWith(rel, text string, shape func(*markdown.Block)) (*markdown.Block, error) {
+func (s *Service) addWith(rel, text string, shape func(*markdown.Block)) (*Result, error) {
 	d, err := s.Load(rel)
 	if err != nil {
 		return nil, err
@@ -254,13 +256,11 @@ func (s *Service) addWith(rel, text string, shape func(*markdown.Block)) (*markd
 	if shape != nil {
 		shape(b)
 	}
-	if err := s.Save(d); err != nil {
-		return nil, err
-	}
-	return b, nil
+	return s.commit(d, b)
 }
 
-// AddToPage appends a block to a named page, creating the page if needed.
+// AddToPage appends a block to a named page, creating the page if needed, and
+// returns the page's file. Add is the form that returns the block's address.
 func (s *Service) AddToPage(name, text string) (string, error) {
 	rel, _, err := s.ResolvePage(name)
 	if err != nil {
@@ -273,35 +273,110 @@ func (s *Service) AddToPage(name, text string) (string, error) {
 }
 
 // AddTodo appends an open task to today's journal, with a deadline when one is
-// given. The deadline is typed shorthand — "fri", "in 3 days", "12.11" — and
-// anything that does not parse is refused before anything is written: a
-// silently wrong deadline is worse than an error.
+// given, and returns the journal's file. AddTodoTo returns the block's address.
 func (s *Service) AddTodo(text, due string) (string, error) {
-	var deadline string
+	rel := s.TodayRel()
+	if _, err := s.AddTodoTo(rel, text, due); err != nil {
+		return "", err
+	}
+	return rel, nil
+}
+
+// AddTodoTo appends an open task to a file, with a deadline when one is given.
+// The deadline is typed shorthand — "fri", "in 3 days", "12.11" — and anything
+// that does not parse is refused before anything is written: a silently wrong
+// deadline is worse than an error. It is written to the configured property,
+// the same one /deadline writes.
+func (s *Service) AddTodoTo(rel, text, due string) (*Result, error) {
+	var deadline time.Time
 	if strings.TrimSpace(due) != "" {
 		d, ok := dates.Parse(due, time.Now())
 		if !ok {
-			return "", fmt.Errorf("not a date: %q", due)
+			return nil, refuse("not a date: %q", due)
 		}
-		deadline = dates.Format(d)
+		deadline = d
 	}
-	rel := s.TodayRel()
-	_, err := s.addWith(rel, text, func(b *markdown.Block) {
+	return s.addWith(rel, text, func(b *markdown.Block) {
 		b.MakeTask()
-		if deadline != "" {
-			b.SetProp(DeadlineProp, deadline)
+		if !deadline.IsZero() {
+			setDeadline(b, deadline, s.Cfg.DeadlineProperty())
 		}
 	})
-	return rel, err
 }
 
-// AddToday appends a block to today's journal.
+// AddToday appends a block to today's journal and returns the journal's file.
 func (s *Service) AddToday(text string) (string, error) {
 	rel := s.TodayRel()
 	if _, err := s.Add(rel, text); err != nil {
 		return "", err
 	}
 	return rel, nil
+}
+
+// FindPage turns what was typed into a file, without creating one. A path is
+// taken as a path; anything else is a page name, which may be an alias for a
+// page actually called something else. A page that does not exist is refused
+// rather than made, because reading is not a reason to write.
+func (s *Service) FindPage(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if strings.HasSuffix(name, ".md") || strings.Contains(name, "/") {
+		if err := s.Store.Check(name); err != nil {
+			return "", err
+		}
+		if _, err := os.Stat(s.Store.Abs(name)); err != nil {
+			return "", refuse("no file %s in the notes", name)
+		}
+		return name, nil
+	}
+	rel, exists, err := s.ResolvePage(name)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		return "", refuse("no page called %q — `tlog open %s` would create it", name, name)
+	}
+	return rel, nil
+}
+
+// DayRel is the journal a day means, typed as a date, a shorthand — today,
+// yesterday, fri, 12.11 — or a count of days from today: -1, +2.
+func (s *Service) DayRel(spec string) (string, error) {
+	spec = strings.TrimSpace(spec)
+	now := time.Now()
+	if spec == "" {
+		return s.TodayRel(), nil
+	}
+	if n, err := strconv.Atoi(spec); err == nil {
+		return s.JournalRel(now.AddDate(0, 0, n)), nil
+	}
+	day, ok := dates.Parse(spec, now)
+	if !ok {
+		return "", refuse("not a day: %q", spec)
+	}
+	return s.JournalRel(day), nil
+}
+
+// PushNow commits whatever is outstanding and pushes it, which is what every
+// adapter means by "push".
+func (s *Service) PushNow() error {
+	if err := s.Commit(); err != nil {
+		return err
+	}
+	return s.Push()
+}
+
+// AddAlias gives a page another name, in its frontmatter, the way /alias does.
+func (s *Service) AddAlias(rel, alias string) error {
+	alias = strings.TrimSpace(alias)
+	if err := checkAlias(alias); err != nil {
+		return err
+	}
+	d, err := s.Load(rel)
+	if err != nil {
+		return err
+	}
+	addAlias(d.Doc, alias)
+	return s.Save(d)
 }
 
 // Import converts a Logseq graph into the notes directory and puts the result
@@ -352,13 +427,18 @@ func (a *Addr) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// ParseAddr reads the form produced by Addr.String.
+// ParseAddr reads the form produced by Addr.String. An address without its
+// hash is refused: the hash is the whole safety story, and an address that
+// skipped the check would be a way to overwrite whatever is at an offset now.
 func ParseAddr(s string) (Addr, error) {
 	at := strings.LastIndex(s, "@")
 	if at < 0 {
 		return Addr{}, fmt.Errorf("address %q has no @hash; take it from search output", s)
 	}
 	rest, hash := s[:at], s[at+1:]
+	if strings.TrimSpace(hash) == "" {
+		return Addr{}, fmt.Errorf("address %q has an empty hash; take it from search output", s)
+	}
 	colon := strings.LastIndex(rest, ":")
 	if colon < 0 {
 		return Addr{}, fmt.Errorf("address %q has no :offset", s)
@@ -373,16 +453,21 @@ func ParseAddr(s string) (Addr, error) {
 // Resolve turns an address back into a live block, refusing if the file has
 // changed since the address was issued.
 func (s *Service) Resolve(a Addr) (*Doc, *markdown.Block, error) {
+	if a.Hash == "" {
+		return nil, nil, fmt.Errorf("%s has no hash; an address is only safe with the hash of the file it came from", a)
+	}
 	d, err := s.Load(a.Rel)
 	if err != nil {
 		return nil, nil, err
 	}
-	if a.Hash != "" && d.Hash != a.Hash {
+	if d.Hash != a.Hash {
 		return nil, nil, &store.ErrConflict{Rel: a.Rel, Expected: a.Hash, Actual: d.Hash}
 	}
 	b := d.Doc.FindByOffset(a.Offset)
 	if b == nil {
-		return nil, nil, fmt.Errorf("no block at offset %d in %s", a.Offset, a.Rel)
+		// The file is as it was read, so the offset was never a block: a
+		// place that does not exist, not a race.
+		return nil, nil, refuse("no block at offset %d in %s", a.Offset, a.Rel)
 	}
 	return d, b, nil
 }

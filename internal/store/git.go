@@ -302,6 +302,60 @@ func commitMessage(files []string) string {
 	}
 }
 
+// CommitPrefix starts every commit tlog makes, which is how one of tlog's own
+// can be told from one made by hand.
+const CommitPrefix = "tlog: "
+
+// LastCommit is the newest commit touching rel, or the newest commit tlog made
+// when rel is empty: its hash and subject. ok is false when there is none.
+func (g *Git) LastCommit(rel string) (hash, subject string, ok bool, err error) {
+	if !g.Enabled() {
+		return "", "", false, fmt.Errorf("no git repository in the notes directory")
+	}
+	args := []string{"log", "-1", "--format=%H%x00%s"}
+	if rel == "" {
+		args = append(args, "-E", "--grep=^"+CommitPrefix)
+	} else {
+		args = append(args, "--", rel)
+	}
+	out, err := output(g.root, args...)
+	if err != nil || strings.TrimSpace(out) == "" {
+		return "", "", false, nil
+	}
+	hash, subject, _ = strings.Cut(strings.TrimSpace(out), "\x00")
+	return hash, subject, true, nil
+}
+
+// FilesIn lists the files a commit changed.
+func (g *Git) FilesIn(hash string) ([]string, error) {
+	out, err := output(g.root, "show", "--name-only", "--format=", hash)
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, l := range strings.Split(out, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			files = append(files, filepath.FromSlash(l))
+		}
+	}
+	return files, nil
+}
+
+// FileAt is a file as a commit has it. exists is false when the commit does
+// not have the file at all; "HEAD^" and the like are accepted as revisions.
+func (g *Git) FileAt(rev, rel string) (data []byte, exists bool, err error) {
+	cmd := exec.Command("git", "cat-file", "-e", rev+":"+filepath.ToSlash(rel))
+	cmd.Dir = g.root
+	if cmd.Run() != nil {
+		return nil, false, nil
+	}
+	out, err := output(g.root, "show", rev+":"+filepath.ToSlash(rel))
+	if err != nil {
+		return nil, false, err
+	}
+	return []byte(out), true, nil
+}
+
 // Revert restores the notes directory to the last commit, discarding
 // uncommitted changes. This is the undo of last resort.
 func (g *Git) Revert() error {
