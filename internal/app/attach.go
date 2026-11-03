@@ -2,7 +2,11 @@ package app
 
 import (
 	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/tilman-schieber/tlog/internal/attach"
 )
@@ -91,4 +95,53 @@ func (s *Service) AttachTo(rel string, paths ...string) ([]AttachView, error) {
 		return added, err
 	}
 	return added, nil
+}
+
+// MaxImage is the largest picture taken from the clipboard. A screenshot of a
+// large display is a few megabytes; this leaves room to spare while bounding
+// what a stray paste can put on the shelf.
+const MaxImage = 50 << 20
+
+// imageTypes is what a pasted picture may be, keyed by what its bytes say.
+var imageTypes = map[string]string{
+	"image/png":  ".png",
+	"image/jpeg": ".jpg",
+	"image/gif":  ".gif",
+	"image/webp": ".webp",
+}
+
+// AttachImage puts a picture that is not a file yet — a screenshot on the
+// clipboard — on the shelf, named for the moment it arrived, and returns it
+// like anything else attached. What it is is read from the bytes rather than
+// taken on trust, so a paste of anything else is refused; two in one second
+// get two names, because the shelf never overwrites.
+func (s *Service) AttachImage(data []byte, now time.Time) (AttachView, error) {
+	if len(data) == 0 {
+		return AttachView{}, fmt.Errorf("the clipboard holds no picture")
+	}
+	if len(data) > MaxImage {
+		return AttachView{}, fmt.Errorf("the picture is larger than %d MB", MaxImage>>20)
+	}
+	kind := http.DetectContentType(data)
+	ext, ok := imageTypes[kind]
+	if !ok {
+		return AttachView{}, fmt.Errorf("not a picture tlog can show (%s)", kind)
+	}
+
+	// The shelf copies from a path, so the bytes become a file first, under
+	// the name they should have; the copy on the shelf is the one that stays.
+	tmp, err := os.MkdirTemp("", "tlog-paste-")
+	if err != nil {
+		return AttachView{}, err
+	}
+	defer os.RemoveAll(tmp)
+	src := filepath.Join(tmp, "screenshot-"+now.Format("2006-01-02-150405")+ext)
+	if err := os.WriteFile(src, data, 0o600); err != nil {
+		return AttachView{}, err
+	}
+	added, err := s.Attach(src)
+	if err != nil {
+		return AttachView{}, err
+	}
+	return added[0], nil
 }

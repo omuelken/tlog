@@ -229,6 +229,14 @@ function decorate(text, fences, embeds = []) {
   return out.join("");
 }
 
+// imageSrc is where the page fetches a picture from. A file:// address — the
+// way att links everything on the shelf — will not load into a page with an
+// origin of its own, so it is asked of the app at /file/<path>, which serves
+// the shelf and nothing else. The note keeps its file:// link.
+function imageSrc(src) {
+  return src.startsWith("file://") ? "/file" + src.slice("file://".length) : src;
+}
+
 // A ```csv fence is drawn as a table. Pipe tables are miserable to type and
 // worse to edit; rows of values are not, and the file stays ordinary markdown.
 function fenceHTML(lang, code, prepared) {
@@ -341,7 +349,7 @@ function decorateInline(text, embeds, cursor) {
 
   // An image before a link, so ![alt](src) is not read as a link.
   out = out.replace(/!\[([^\[\]]*)\]\(([^()\s]+)\)/g, (_, alt, src) =>
-    hold(`<img src="${src}" alt="${alt}" loading="lazy">`)
+    hold(`<img src="${imageSrc(src)}" alt="${alt}" loading="lazy">`)
   );
   out = out.replace(/\[([^\[\]]+)\]\(([^()\s]+)\)/g, (_, label, url) =>
     hold(`<span class="link" data-url="${url}">${label}</span>`)
@@ -672,6 +680,35 @@ function caretAtStart(el) {
   return r.toString().length === 0;
 }
 
+// pastedImage is the picture on the clipboard, or null when there is none or
+// when there is text as well — copied words that happen to come with a
+// preview are still words.
+function pastedImage(cd) {
+  if (!cd || !cd.items) return null;
+  if ((cd.getData && cd.getData("text/plain") || "").trim()) return null;
+  for (const it of cd.items) {
+    if (it.kind === "file" && it.type.startsWith("image/")) return it.getAsFile();
+  }
+  return null;
+}
+
+// dataURLOf reads a file the way a WebView lets a page read it.
+function dataURLOf(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(file);
+  });
+}
+
+// dataURLBody is the base64 after the comma of a data: URL, which is what the
+// app takes; the type in front of it is not trusted, the bytes are sniffed.
+function dataURLBody(url) {
+  const i = url.indexOf(",");
+  return i < 0 ? "" : url.slice(i + 1);
+}
+
 function wireBlock(el, b) {
   // While a block has focus it shows raw text: what you type is what is stored.
   el.addEventListener("focus", () => {
@@ -690,6 +727,19 @@ function wireBlock(el, b) {
   });
 
   el.addEventListener("input", () => updateCompletion(el));
+
+  // A picture on the clipboard — a screenshot, most of the time — goes on the
+  // shelf and its link is typed at the caret. Text pastes as text.
+  el.addEventListener("paste", async (e) => {
+    const file = pastedImage(e.clipboardData);
+    if (!file) return;
+    e.preventDefault();
+    const link = await call(async () => api().PasteImage(dataURLBody(await dataURLOf(file))));
+    if (!link) return;
+    el.focus();
+    document.execCommand("insertText", false, link);
+    updateCompletion(el);
+  });
 
   el.addEventListener("keydown", async (e) => {
     if (completion && handleCompletionKey(e, el)) return;
@@ -1531,7 +1581,16 @@ function drawSettings(items, note) {
 async function saveSetting(key, value) {
   const res = await call(() => api().SetSetting(key, value));
   if (!res) return openSettings(); // a refused value: show what it really is
+  applyFontSize(res.settings);
   drawSettings(res.settings, res.note ? "Gespeichert — " + res.note : "Gespeichert");
+}
+
+// applyFontSize sizes the window's text by the app.font_size setting. Every
+// text size in the stylesheet is in rem, so the root is the one place to set.
+function applyFontSize(items) {
+  const s = (items || []).find((it) => it.key === "app.font_size");
+  const n = s ? parseInt(s.value, 10) : 0;
+  if (n > 0) document.documentElement.style.fontSize = n + "px";
 }
 
 $("gear").onclick = openSettings;
@@ -1846,7 +1905,9 @@ function toggleHelp() {
 }
 
 // Wails reports a file drop here. The files go on the shared shelf and their
-// links into the page currently open.
+// links into the page currently open. The drop is reported only when it lands
+// on a drop target, which is what --wails-drop-target in style.css makes the
+// layout; without that rule every drop was discarded without a word.
 window.runtime && window.runtime.OnFileDrop(async (x, y, paths) => {
   if (!paths || !paths.length || !page) return;
   document.body.classList.remove("dropping");
@@ -1975,6 +2036,7 @@ window.addEventListener("focus", applyTheme);
 
 (async function start() {
   await applyTheme();
+  applyFontSize(await call(() => api().Settings()));
   const root = await call(() => api().Root());
   if (root) $("rootpath").textContent = root;
   await refreshIndex();

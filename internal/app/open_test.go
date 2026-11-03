@@ -68,6 +68,8 @@ func TestDroppedFilesReadsWhatTerminalsType(t *testing.T) {
 		plain + " " + escaped,              // kitty, ghostty: shell-escaped
 		"'" + plain + "' '" + spaced + "'", // quoted
 		"file://" + plain + "\nfile://" + strings.ReplaceAll(spaced, " ", "%20"), // a uri-list
+		plain + "\n" + spaced + "\n", // one plain path per line, spaces and all
+		plain + "\r\n" + spaced,      // ...with Windows line ends
 	} {
 		got := DroppedFiles(drop)
 		if len(got) != 2 || got[0] != plain || got[1] != spaced {

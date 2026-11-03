@@ -92,12 +92,29 @@ func systemOpen(target string) error {
 // when every one of them is an existing file, so pasting ordinary text that
 // happens to contain a path is never mistaken for a drop.
 func DroppedFiles(text string) []string {
-	tokens := shellWords(strings.TrimSpace(text))
-	if len(tokens) == 0 {
+	text = strings.TrimSpace(text)
+	if text == "" {
 		return nil
 	}
+	// Some terminals write one plain path per line, spaces and all, which a
+	// shell would split; those are tried whole when the shell reading fails.
+	for _, parts := range [][]string{shellWords(text), strings.Split(text, "\n")} {
+		if files := existingFiles(parts); files != nil {
+			return files
+		}
+	}
+	return nil
+}
+
+// existingFiles is the parts as paths, or nil unless every one of them is an
+// absolute path to a regular file.
+func existingFiles(parts []string) []string {
 	var out []string
-	for _, tok := range tokens {
+	for _, tok := range parts {
+		tok = strings.TrimSpace(tok)
+		if tok == "" {
+			continue
+		}
 		if strings.HasPrefix(tok, "file://") {
 			u, err := url.Parse(tok)
 			if err != nil {

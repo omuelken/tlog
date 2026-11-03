@@ -48,6 +48,10 @@
 /* Checkboxes and the like take the theme's accent, not WebKit's own blue. */
 :root { accent-color: var(--accent); }
 
+/* Every text size below is in rem, from this one: app.font_size sets it on the
+   root and the whole window follows. Spacing and widths stay in pixels. */
+html { font-size: 14px; }
+
 html, body {
   margin: 0;
   height: 100%;
@@ -57,7 +61,7 @@ html, body {
   /* Adwaita Sans leads because on Linux fontconfig answers any name it lacks,
      BlinkMacSystemFont included, with Liberation Sans, and WebKit takes it.
      macOS has no Adwaita Sans, so it still falls through to its own. */
-  font: 14px/1.5 "Adwaita Sans", -apple-system, BlinkMacSystemFont, Inter, "Segoe UI",
+  font: 1rem/1.5 "Adwaita Sans", -apple-system, BlinkMacSystemFont, Inter, "Segoe UI",
     Cantarell, "Noto Sans", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
@@ -104,6 +108,11 @@ html, body {
 #layout {
   display: flex;
   height: 100%;
+  /* Where a file may be dropped. app.js asks Wails for drops on a drop target
+     only, and without this property nothing was one: every drop on the window
+     was thrown away silently. It is inherited, so everything below the title
+     bar takes a drop. */
+  --wails-drop-target: drop;
 }
 .mac #layout { height: calc(100% - 38px); }
 
@@ -167,7 +176,7 @@ html, body {
   cursor: default;
 }
 #results .hit:hover { background: var(--sel); }
-#results .hit .where { color: var(--fg-muted); font-size: 11px; }
+#results .hit .where { color: var(--fg-muted); font-size: 0.786rem; }
 #results .hit .what {
   white-space: nowrap;
   overflow: hidden;
@@ -204,7 +213,7 @@ html, body {
   gap: 7px;
   padding: 5px 10px;
   color: var(--fg-muted);
-  font-size: 11px;
+  font-size: 0.786rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -245,7 +254,7 @@ html, body {
   padding: 7px 8px 7px 14px;
   border-top: 1px solid var(--line);
   color: var(--fg-muted);
-  font-size: 11px;
+  font-size: 0.786rem;
 }
 
 #rootpath {
@@ -266,7 +275,7 @@ html, body {
 
 #pagehead { display: flex; align-items: center; gap: 8px; padding: 10px 0 6px; }
 
-#title { font-size: 24px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+#title { font-size: 1.714rem; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
 
 #daynav { display: flex; gap: 0; }
 
@@ -276,7 +285,7 @@ html, body {
   border-radius: 9px;
   background: var(--sel);
   color: var(--tag);
-  font-size: 11px;
+  font-size: 0.786rem;
 }
 
 /* --- outline ------------------------------------------------------------- */
@@ -290,7 +299,7 @@ html, body {
   padding-top: 4px;
   text-align: center;
   color: var(--fg-muted);
-  font-size: 10px;
+  font-size: 0.714rem;
   cursor: default;
   user-select: none;
 }
@@ -315,7 +324,7 @@ html, body {
   user-select: none;
 }
 
-.props { color: var(--prop); font-size: 12px; }
+.props { color: var(--prop); font-size: 0.857rem; }
 
 .link { color: var(--accent); cursor: default; }
 .block .text code, .refline code {
@@ -330,7 +339,7 @@ html, body {
 .link:hover { text-decoration: underline; }
 .tag { color: var(--tag); cursor: default; }
 .link + .tag { margin-left: 4px; font-size: 0.88em; }
-.anchor { color: var(--fg-muted); font-size: 11px; }
+.anchor { color: var(--fg-muted); font-size: 0.786rem; }
 /* --- rendered block content ---------------------------------------------- */
 
 .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; }
@@ -354,7 +363,7 @@ pre.code[data-lang]::before {
   display: block;
   margin-bottom: 5px;
   color: var(--fg-muted);
-  font-size: 10px;
+  font-size: 0.714rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -373,7 +382,7 @@ table.grid::after {
   display: block;
   margin-top: 3px;
   color: var(--fg-muted);
-  font-size: 10px;
+  font-size: 0.714rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -437,7 +446,7 @@ blockquote {
   padding-bottom: 5px;
   border-bottom: 1px solid var(--line);
   color: var(--fg-muted);
-  font-size: 11px;
+  font-size: 0.786rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -450,7 +459,7 @@ blockquote {
 .refgroup { margin-bottom: 14px; }
 .refgroup .from {
   color: var(--accent);
-  font-size: 12px;
+  font-size: 0.857rem;
   cursor: default;
   margin-bottom: 2px;
 }
@@ -481,7 +490,7 @@ blockquote {
 #complete { display: flex; gap: 8px; min-width: 190px; }
 #complete .item { padding: 4px 8px; border-radius: 5px; cursor: default; white-space: nowrap; }
 #complete .item.sel { background: var(--sel); }
-#complete .hint { color: var(--fg-muted); font-size: 12px; }
+#complete .hint { color: var(--fg-muted); font-size: 0.857rem; }
 #complete .cmds { min-width: 168px; max-height: 224px; overflow-y: auto; }
 #complete .cmds.files { min-width: 280px; }
 
@@ -498,9 +507,9 @@ body.dropping #main { outline: 2px dashed var(--accent); outline-offset: -8px; }
 #complete .calhead {
   padding: 0 4px 3px;
   color: var(--fg-muted);
-  font-size: 11px;
+  font-size: 0.786rem;
 }
-table.cal { border-collapse: collapse; font-size: 11px; }
+table.cal { border-collapse: collapse; font-size: 0.786rem; }
 table.cal th {
   padding: 1px 4px;
   color: var(--fg-muted);
@@ -518,7 +527,7 @@ table.cal td.sel { background: var(--accent); color: #fff; font-weight: 600; }
 .due {
   flex: none;
   padding-top: 2px;
-  font-size: 11px;
+  font-size: 0.786rem;
   white-space: nowrap;
   cursor: default;
 }
@@ -557,7 +566,7 @@ table.cal td.sel { background: var(--accent); color: #fff; font-weight: 600; }
   padding: 13px 17px;
   border-bottom: 1px solid var(--line);
 }
-#settings h2 { margin: 0; font-size: 15px; }
+#settings h2 { margin: 0; font-size: 1.071rem; }
 #settings header button {
   padding: 4px 13px;
   border: 1px solid var(--line);
@@ -573,7 +582,7 @@ table.cal td.sel { background: var(--accent); color: #fff; font-weight: 600; }
   padding: 8px 17px;
   border-top: 1px solid var(--line);
   color: var(--fg-muted);
-  font-size: 11px;
+  font-size: 0.786rem;
 }
 
 .setting {
@@ -585,9 +594,9 @@ table.cal td.sel { background: var(--accent); color: #fff; font-weight: 600; }
 }
 .setting:last-of-type { border-bottom: none; }
 .setting .label { flex: 1; }
-.setting .key { font-weight: 600; font-size: 13px; }
-.setting .hint { color: var(--fg-muted); font-size: 12px; }
-.setting .note { color: var(--fg-muted); font-size: 11px; font-style: italic; }
+.setting .key { font-weight: 600; font-size: 0.929rem; }
+.setting .hint { color: var(--fg-muted); font-size: 0.857rem; }
+.setting .note { color: var(--fg-muted); font-size: 0.786rem; font-style: italic; }
 .setting .field { flex: none; padding-top: 2px; }
 .setting input[type="text"] {
   width: 190px;
@@ -597,10 +606,10 @@ table.cal td.sel { background: var(--accent); color: #fff; font-weight: 600; }
   background: var(--bg);
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: 0.857rem;
 }
 .setting input[type="text"]:focus { outline: none; border-color: var(--accent); }
-.savednote { padding-top: 10px; color: var(--fg-muted); font-size: 12px; }
+.savednote { padding-top: 10px; color: var(--fg-muted); font-size: 0.857rem; }
 
 #error {
   position: fixed;
@@ -672,7 +681,7 @@ table.cal td.sel { background: var(--accent); color: #fff; font-weight: 600; }
 
 .alsoknown {
   color: var(--fg-muted);
-  font-size: 12px;
+  font-size: 0.857rem;
   margin-left: 8px;
 }
 
@@ -741,9 +750,9 @@ table.cal td.sel { background: var(--accent); color: #fff; font-weight: 600; }
   padding: 12px 16px;
   border-bottom: 1px solid var(--line);
 }
-#help h2 { margin: 0; font-size: 14px; }
+#help h2 { margin: 0; font-size: 1rem; }
 #helplist { padding: 8px 16px 16px; }
-#helplist table { width: 100%; border-collapse: collapse; font-size: 13px; }
+#helplist table { width: 100%; border-collapse: collapse; font-size: 0.929rem; }
 #helplist td { padding: 5px 0; }
 #helplist .chord {
   width: 5.5rem;
@@ -798,13 +807,13 @@ table.cal td.sel { background: var(--accent); color: #fff; font-weight: 600; }
   padding: 12px 16px;
   border-bottom: 1px solid var(--line);
 }
-#log h2 { margin: 0; font-size: 14px; }
+#log h2 { margin: 0; font-size: 1rem; }
 #loglist {
   margin: 0;
   padding: 8px 16px 16px;
   overflow-y: auto;
   list-style: none;
-  font-size: 13px;
+  font-size: 0.929rem;
 }
 .logline { display: flex; gap: 10px; padding: 4px 0; }
 .logline .when {
@@ -844,7 +853,7 @@ table.cal td.sel { background: var(--accent); color: #fff; font-weight: 600; }
   background: none;
   color: inherit;
   font: inherit;
-  font-size: 15px;
+  font-size: 1.071rem;
   outline: none;
 }
 #palettelist {
@@ -869,7 +878,7 @@ table.cal td.sel { background: var(--accent); color: #fff; font-weight: 600; }
   flex: none;
   width: 4.2rem;
   color: var(--fg-muted);
-  font-size: 11px;
+  font-size: 0.786rem;
 }
 
 /* The @ menu says what each entry is before a word of it is read. */

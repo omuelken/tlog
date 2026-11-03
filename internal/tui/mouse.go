@@ -95,6 +95,23 @@ func (m *Model) click(line, x int) {
 		return
 	}
 
+	// The box of a task sits after the bullet: two cells as drawn, three as
+	// the raw "[ ]" of the block being written.
+	box := 2
+	if m.ed != nil && m.edBlock == r.block {
+		box = 3
+	}
+	if line == m.lineFirst[line] && r.block.Task() != markdown.NotATask &&
+		x >= bulletCol+2 && x < bulletCol+2+box {
+		m.moveCursor(ri - m.cur)
+		if m.ed != nil {
+			m.toggleTaskWhileTyping()
+		} else {
+			m.toggleTask()
+		}
+		return
+	}
+
 	if m.mode == modeMove && ri != m.cur {
 		m.moveCursor(ri - m.cur)
 		return
@@ -190,12 +207,19 @@ func (m *Model) dropFiles(paths []string) {
 // the paste, which it does for files, and for anything pasted while moving,
 // where there is no caret to put it at.
 func (m *Model) paste(msg tea.KeyMsg) bool {
-	if !msg.Paste {
+	// Not every terminal brackets a drop. Typing delivers one character at a
+	// time, so several runes in one message are a paste whatever it is called
+	// — and in moving mode a path's letters would otherwise be read as keys.
+	burst := msg.Type == tea.KeyRunes && len(msg.Runes) > 1
+	if !msg.Paste && !burst {
 		return false
 	}
 	if files := app.DroppedFiles(string(msg.Runes)); files != nil {
 		m.dropFiles(files)
 		return true
+	}
+	if !msg.Paste {
+		return false // quick typing, not a paste: each rune is a key
 	}
 	if m.mode == modeMove {
 		m.status = "enter to write, then paste"
