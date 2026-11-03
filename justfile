@@ -7,6 +7,7 @@ test:
     node --check app/frontend/app.js
     node app/frontend/app_test.js
     node app/frontend/smoke_test.js
+    node omarchy/tests/model_test.js
 
 # What CI runs, so a red build is reproducible here rather than only on GitHub.
 # -race is not optional: the watcher runs a sweep goroutine and the store keeps
@@ -21,6 +22,7 @@ ci:
     node --check app/frontend/app.js
     node app/frontend/app_test.js
     node app/frontend/smoke_test.js
+    node omarchy/tests/model_test.js
     for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
       GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/tlog
     done

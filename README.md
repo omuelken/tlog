@@ -109,6 +109,12 @@ terminal.
 newline-inside-a-block key is `alt+enter` or `ctrl+j`. In kitty you can map
 `shift+enter` to `\x1b\r` to get it as well.
 
+## In the Omarchy bar
+
+`omarchy/` is a bar widget for Omarchy: open todos at a glance, ticked off or
+captured into today's journal without leaving the bar. See
+[`omarchy/README.md`](omarchy/README.md).
+
 ## The dialect
 
 Small on purpose. This is not CommonMark and does not try to be.

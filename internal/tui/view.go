@@ -84,7 +84,8 @@ func (m *Model) header() string {
 	if store.IsJournal(m.doc.Rel) {
 		kind = "journal"
 	}
-	left := styleTitle.Render(title) + " " + styleMuted.Render(kind)
+	// nf-md-notebook, the mark the Omarchy bar widget wears too.
+	left := styleTitle.Render("󰠮 "+title) + " " + styleMuted.Render(kind)
 	if m.page != nil {
 		for _, t := range m.page.Tags {
 			left += " " + styleTag.Render("#"+t)

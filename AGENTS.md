@@ -33,6 +33,7 @@ internal/app/        the core — every semantic operation
 internal/importer/   one-way Logseq conversion
 internal/cli/        adapter
 internal/tui/        adapter
+omarchy/             the Omarchy bar widget (Quickshell), over `tlog todo -json`
 ```
 
 ## The rules that matter

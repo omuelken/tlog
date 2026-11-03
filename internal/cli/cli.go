@@ -22,9 +22,12 @@ const usage = `tlog — a markdown-first knowledge outliner
 
 usage:
   tlog                      open today's journal in the outliner
+  tlog edit <page>          open a page, or a day like 2026-11-03, in the outliner
   tlog today                print the path of today's journal
   tlog open <page>          print the path of a page, creating it if needed
   tlog add [-p page] text   append a block to today's journal, or to a page
+  tlog add -todo [-due d] t add an open task to today's journal, with a deadline
+  tlog todo [-json]         every open task, dated first, then the undated ones
   tlog import [-from dir]   import a Logseq graph into the notes directory
   tlog config [key value]   show the settings, or change one
   tlog attach FILE...       put files on the ~/.att shelf and link them here
@@ -88,6 +91,20 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	switch cmd {
 	case "":
 		return run(stderr, svc, func() error { return tui.Run(svc, "") })
+	case "edit":
+		if len(rest) == 0 {
+			fmt.Fprintln(stderr, "tlog edit: which page?")
+			return exitUsage
+		}
+		return run(stderr, svc, func() error {
+			rel, err := svc.OpenPage(strings.Join(rest, " "))
+			if err != nil {
+				return err
+			}
+			return tui.Run(svc, rel)
+		})
+	case "todo":
+		return cmdTodo(rest, stdout, stderr, svc)
 	case "today":
 		return run(stderr, svc, func() error {
 			rel := svc.TodayRel()
@@ -160,7 +177,13 @@ func cmdAdd(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 	fs.SetOutput(stderr)
 	page := fs.String("p", "", "append to this page instead of today's journal")
 	fs.StringVar(page, "page", "", "append to this page instead of today's journal")
+	todo := fs.Bool("todo", false, "make it an open task")
+	due := fs.String("due", "", "a deadline for the task: fri, in 3 days, 12.11, 2026-11-12")
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if (*todo || *due != "") && *page != "" {
+		fmt.Fprintln(stderr, "tlog add: a task goes into today's journal; -todo and -p do not mix")
 		return 2
 	}
 
@@ -182,7 +205,9 @@ func cmdAdd(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 	return run(stderr, svc, func() error {
 		var rel string
 		var err error
-		if *page != "" {
+		if *todo || *due != "" {
+			rel, err = svc.AddTodo(text, *due)
+		} else if *page != "" {
 			rel, err = svc.AddToPage(*page, text)
 		} else {
 			rel, err = svc.AddToday(text)
@@ -349,6 +374,45 @@ func cmdDue(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 		}
 		fmt.Fprintf(stdout, "%s [%s] %-11s %-18s %s  (%s)\n",
 			flag, mark, it.Due, truncate(it.Label, 18), truncate(it.Text, 60), it.Page)
+	}
+	return 0
+}
+
+// cmdTodo lists every open task. With -json each carries an address, which is
+// what a bar widget needs to tick one off with `tlog block <addr> task`.
+func cmdTodo(args []string, stdout, stderr io.Writer, svc *app.Service) int {
+	fs := flag.NewFlagSet("todo", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	asJSON := fs.Bool("json", false, "print as JSON, with an address for each")
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
+	}
+	items, err := svc.Todos()
+	if err != nil {
+		return fail(stderr, err)
+	}
+	if *asJSON {
+		if items == nil {
+			items = []app.DueItem{} // [] rather than null, for whoever parses it
+		}
+		if err := emit(stdout, items); err != nil {
+			return fail(stderr, err)
+		}
+		return exitOK
+	}
+	if len(items) == 0 {
+		fmt.Fprintln(stdout, "nothing to do")
+		return 0
+	}
+	for _, it := range items {
+		flag := " "
+		if it.State == "overdue" {
+			flag = "!"
+		} else if it.State == "today" {
+			flag = "*"
+		}
+		fmt.Fprintf(stdout, "%s [ ] %-11s %-18s %s  (%s)\n",
+			flag, it.Due, truncate(it.Label, 18), truncate(it.Text, 60), it.Page)
 	}
 	return 0
 }

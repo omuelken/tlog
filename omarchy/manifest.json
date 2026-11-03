@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.tilman-schieber.tlog",
+  "name": "tlog",
+  "version": "0.1.0",
+  "author": "Tilman Schieber",
+  "license": "MIT",
+  "homepage": "https://github.com/tilman-schieber/tlog",
+  "description": "Every open tlog todo in the bar, coloured by what is most pressing, with quick capture into today's journal.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "tlog",
+    "description": "Open todos from your tlog notes, ticked off or captured without leaving the bar. Click for the list, right-click for today's journal, middle-click to capture.",
+    "category": "Productivity",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "tlogPath": "",
+      "hideWhenClear": false
+    },
+    "schema": [
+      {
+        "key": "tlogPath",
+        "type": "path",
+        "label": "Path to tlog",
+        "description": "Leave empty to find tlog on PATH.",
+        "defaultValue": ""
+      },
+      {
+        "key": "hideWhenClear",
+        "type": "boolean",
+        "label": "Hide the icon when nothing is open",
+        "defaultValue": false
+      }
+    ]
+  }
+}

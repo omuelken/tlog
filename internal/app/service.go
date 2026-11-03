@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/tilman-schieber/tlog/internal/config"
+	"github.com/tilman-schieber/tlog/internal/dates"
 	"github.com/tilman-schieber/tlog/internal/graph"
 	"github.com/tilman-schieber/tlog/internal/importer"
 	"github.com/tilman-schieber/tlog/internal/markdown"
@@ -219,6 +220,12 @@ func (s *Service) OpenPage(name string) (string, error) {
 // supported: a multi-line string becomes one multi-line block, which is what
 // pasting a snippet into a journal should do.
 func (s *Service) Add(rel, text string) (*markdown.Block, error) {
+	return s.addWith(rel, text, nil)
+}
+
+// addWith is Add with a chance to shape the block — make it a task, give it a
+// deadline — before the one write.
+func (s *Service) addWith(rel, text string, shape func(*markdown.Block)) (*markdown.Block, error) {
 	d, err := s.Load(rel)
 	if err != nil {
 		return nil, err
@@ -231,6 +238,9 @@ func (s *Service) Add(rel, text string) (*markdown.Block, error) {
 		b = d.Doc.Blocks[0]
 	} else {
 		d.Doc.AppendChild(nil, b)
+	}
+	if shape != nil {
+		shape(b)
 	}
 	if err := s.Save(d); err != nil {
 		return nil, err
@@ -248,6 +258,29 @@ func (s *Service) AddToPage(name, text string) (string, error) {
 		return "", err
 	}
 	return rel, nil
+}
+
+// AddTodo appends an open task to today's journal, with a deadline when one is
+// given. The deadline is typed shorthand — "fri", "in 3 days", "12.11" — and
+// anything that does not parse is refused before anything is written: a
+// silently wrong deadline is worse than an error.
+func (s *Service) AddTodo(text, due string) (string, error) {
+	var deadline string
+	if strings.TrimSpace(due) != "" {
+		d, ok := dates.Parse(due, time.Now())
+		if !ok {
+			return "", fmt.Errorf("not a date: %q", due)
+		}
+		deadline = dates.Format(d)
+	}
+	rel := s.TodayRel()
+	_, err := s.addWith(rel, text, func(b *markdown.Block) {
+		b.MakeTask()
+		if deadline != "" {
+			b.SetProp(DeadlineProp, deadline)
+		}
+	})
+	return rel, err
 }
 
 // AddToday appends a block to today's journal.

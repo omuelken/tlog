@@ -242,3 +242,38 @@ func TestConfigShowsAndSets(t *testing.T) {
 		t.Fatalf("code=%d stderr=%q", code, errs)
 	}
 }
+
+func TestTodoListsEveryOpenTaskAndAddMakesOne(t *testing.T) {
+	dir := t.TempDir()
+	if code, _, errs := runCLI(t, dir, "add", "-todo", "-due", "tomorrow", "book the room"); code != 0 {
+		t.Fatalf("add -todo -due: %d %s", code, errs)
+	}
+	if code, _, errs := runCLI(t, dir, "add", "-todo", "call the printer"); code != 0 {
+		t.Fatalf("add -todo: %d %s", code, errs)
+	}
+	if code, _, errs := runCLI(t, dir, "add", "just a note"); code != 0 {
+		t.Fatalf("add: %d %s", code, errs)
+	}
+	if code, _, errs := runCLI(t, dir, "add", "-todo", "-due", "someday maybe", "x"); code == 0 {
+		t.Fatalf("an unparseable deadline was accepted: %s", errs)
+	}
+
+	code, out, errs := runCLI(t, dir, "todo", "-json")
+	if code != 0 {
+		t.Fatalf("todo: %d %s", code, errs)
+	}
+	// The dated task first, then the undated one; the note is not a task.
+	first, second := strings.Index(out, "book the room"), strings.Index(out, "call the printer")
+	if first < 0 || second < first || strings.Contains(out, "just a note") {
+		t.Fatalf("got %s", out)
+	}
+	if !strings.Contains(out, `"addr"`) {
+		t.Fatalf("no addresses to tick them off with: %s", out)
+	}
+
+	// An empty list is [], not null.
+	code, out, _ = runCLI(t, t.TempDir(), "todo", "-json")
+	if code != 0 || strings.TrimSpace(out) != "[]" {
+		t.Fatalf("empty list: %d %q", code, out)
+	}
+}

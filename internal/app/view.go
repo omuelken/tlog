@@ -273,6 +273,56 @@ func refViews(r graph.Ref) []RefView {
 	return out
 }
 
+// Todos lists every open task, dated or not: the dated ones first, soonest
+// first, as Due orders them, then the undated ones with the newest journal
+// first, since a task written down this morning is likelier to be the one
+// still on your mind than one from last spring. An undated item has an empty
+// Due.
+func (s *Service) Todos() ([]DueItem, error) {
+	dated, err := s.Due(false)
+	if err != nil {
+		return nil, err
+	}
+	g, err := s.Graph()
+	if err != nil {
+		return nil, err
+	}
+	var undated []DueItem
+	for _, p := range g.Order {
+		p.Doc.Walk(func(b *markdown.Block) bool {
+			if b.Task() != markdown.TaskOpen {
+				return true
+			}
+			if _, ok := Deadline(b); ok {
+				return true // already listed, with its date
+			}
+			undated = append(undated, DueItem{
+				Addr:   Addr{Rel: p.Rel, Offset: b.Start, Hash: p.Hash},
+				Rel:    p.Rel,
+				Page:   p.Name,
+				Offset: b.Start,
+				Hash:   p.Hash,
+				Text:   strings.TrimSpace(b.TaskBody()),
+			})
+			return true
+		})
+	}
+	sort.SliceStable(undated, func(i, j int) bool {
+		a, b := undated[i], undated[j]
+		aj, bj := store.IsJournal(a.Rel), store.IsJournal(b.Rel)
+		switch {
+		case aj != bj:
+			return aj // journals before pages
+		case aj && a.Rel != b.Rel:
+			return a.Rel > b.Rel // newest day first
+		case a.Rel != b.Rel:
+			return a.Page < b.Page
+		}
+		return a.Offset < b.Offset
+	})
+	return append(dated, undated...), nil
+}
+
 // DueItem is one dated block, addressable so that it can be ticked off from
 // wherever it is listed.
 type DueItem struct {
