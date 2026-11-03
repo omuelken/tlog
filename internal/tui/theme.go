@@ -13,7 +13,10 @@ import (
 // wearing — Omarchy's on Linux, the terminal profile on macOS — and stays
 // legible over ssh and inside tmux.
 var (
-	styleLink     = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+	styleLink = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+	// An ordinary [label](url) is drawn as its label alone, so the underline
+	// is what says there is an address behind it to hover over or click.
+	styleURL      = lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Underline(true)
 	styleTag      = lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
 	styleProp     = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	styleTodo     = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))

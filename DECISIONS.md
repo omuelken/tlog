@@ -138,6 +138,29 @@ alt+←/→ as a chord; ctrl+enter and shift+enter arrive as enter. There is no
 setting for the old vim mode; a setting for a decision is a supported way to
 break it.
 
+**Links are drawn as their label; the mouse is how to see behind one.**
+Ordinary markdown links are not part of the dialect and nothing about how they
+are stored changed. `markdown.URLLinks` only finds them, so the outliner and the
+window show and open the same things. In the outliner `[label](url)` is drawn as
+its label, an image as `▣ alt`, and hovering shows the address in the footer —
+a browser's status bar, rather than expanding the link inline and reflowing the
+page under the pointer. Hover needs all mouse motion, so the outliner asks for
+it; the cost is that selecting terminal text needs shift, as in every mouse-aware
+terminal program.
+
+**What may be opened is the core's rule.** `Service.OpenLink` allows http,
+https, mailto and files that exist, resolves a relative path against the note it
+is written in (which is how Logseq's `../assets` links are meant), and hands the
+rest to `xdg-open` or `open` without waiting. The window used to hold its own
+copy of the scheme list; it calls the core now.
+
+**A drop onto the terminal is a paste of paths.** A terminal cannot hand over
+files, only type their names — shell-escaped, quoted or as `file://` addresses,
+depending on the terminal. `app.DroppedFiles` treats a paste as a drop only when
+every word in it is an existing file, so pasting prose that mentions a path is
+still pasting prose. The files go onto att's shelf through the same
+`Service.Attach` the window's drop uses.
+
 **No Neovim plugin; an LSP server instead (V0.2).** §11 wants completion in the
 TUI, Neovim, Helix, Zed and VS Code — five of which speak LSP natively. An LSP
 server additionally yields go-to-definition, backlinks as find-references and

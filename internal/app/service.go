@@ -31,6 +31,10 @@ type Service struct {
 	// reason: not noticing someone else's edits is a smaller problem than
 	// refusing to open.
 	WatchErr error
+
+	// Launch hands a link to the desktop. Nil means the system's own opener;
+	// tests put a recorder here so that nothing actually opens.
+	Launch func(target string) error
 }
 
 // New opens the notes directory, creating it and its git repository if needed.

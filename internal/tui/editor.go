@@ -145,6 +145,20 @@ func (e *editor) lineEnd(i int) int {
 	return i
 }
 
+// setCaret puts the caret at a line and column, clamped to what is there, for
+// a mouse click.
+func (e *editor) setCaret(line, col int) {
+	i := 0
+	for ; line > 0 && i < len(e.runes); i++ {
+		if e.runes[i] == '\n' {
+			line--
+		}
+	}
+	end := e.lineEnd(i)
+	e.cur = i + max(0, min(col, end-i))
+	e.goalCol = 0
+}
+
 func (e *editor) atStart() bool { return e.cur == 0 }
 func (e *editor) atEnd() bool   { return e.cur == len(e.runes) }
 

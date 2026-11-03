@@ -14,6 +14,7 @@ type pickItem struct {
 	offset int
 	link   markdown.Link
 	run    func(*Model) // a command rather than a place
+	url    string       // an address to hand to the desktop
 }
 
 type picker struct {

@@ -2,7 +2,10 @@ package tui
 
 import (
 	"fmt"
+	"net/url"
+	"path"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -58,6 +61,7 @@ func (m *Model) View() string {
 		top = 0
 	}
 	m.top = top
+	m.bodyTop = top
 
 	for i := top; i < len(lines) && i < top+h; i++ {
 		b.WriteString(lines[i])
@@ -107,6 +111,8 @@ func (m *Model) footer() string {
 		return styleError.Render(m.errMsg)
 	case m.status != "":
 		return styleMuted.Render(m.status)
+	case m.hover != nil:
+		return styleURL.Render(m.hover.target()) + styleMuted.Render("  click to open")
 	case m.rowKind() != rowBlock:
 		return styleMuted.Render("enter open · ↑↓ move · these live on other pages and are not edited here")
 	case m.mode == modeMove:
@@ -122,11 +128,18 @@ func (m *Model) footer() string {
 func (m *Model) bodyLines() ([]string, int) {
 	var out []string
 	cursorLine := 0
+	m.lineRow, m.lineHits, m.lineFirst = m.lineRow[:0], m.lineHits[:0], m.lineFirst[:0]
 
 	for i, r := range m.rows {
 		editing := m.ed != nil && m.edBlock == r.block
 		start := len(out)
-		out = append(out, m.renderRow(r, i == m.cur, editing)...)
+		lines, hits := m.renderRowHits(r, i == m.cur, editing)
+		out = append(out, lines...)
+		for j := range lines {
+			m.lineRow = append(m.lineRow, i)
+			m.lineHits = append(m.lineHits, hits[j])
+			m.lineFirst = append(m.lineFirst, start)
+		}
 		if i == m.cur {
 			cursorLine = start
 			if editing {
@@ -137,13 +150,23 @@ func (m *Model) bodyLines() ([]string, int) {
 	}
 	if len(out) == 0 {
 		out = append(out, styleMuted.Render("  (empty — press enter to write something)"))
+		m.lineRow, m.lineHits, m.lineFirst = append(m.lineRow, -1), append(m.lineHits, nil), append(m.lineFirst, 0)
 	}
 	return out, cursorLine
 }
 
 func (m *Model) renderRow(r row, selected, editing bool) []string {
+	lines, _ := m.renderRowHits(r, selected, editing)
+	return lines
+}
+
+// renderRowHits draws a row and says, line by line, where its links landed.
+func (m *Model) renderRowHits(r row, selected, editing bool) ([]string, [][]linkHit) {
 	if r.kind != rowBlock {
-		return []string{m.renderSectionRow(r, selected)}
+		// A heading starts with a blank line; each screen line is its own
+		// entry, or the mouse would be a line out below it.
+		lines := strings.Split(m.renderSectionRow(r, selected), "\n")
+		return lines, make([][]linkHit, len(lines))
 	}
 	indent := strings.Repeat("  ", r.depth)
 	bullet := "•"
@@ -167,14 +190,15 @@ func (m *Model) renderRow(r row, selected, editing bool) []string {
 	// Fenced regions are drawn from the same prepared form the desktop app
 	// uses: highlighted, or laid out as a table when they are ```csv.
 	if !editing && !selected && strings.Contains(text, "```") {
-		if out := m.renderFenced(r, text, indent, bullet); out != nil {
-			return out
+		if out, hits := m.renderFenced(r, text, indent, bullet); out != nil {
+			return out, hits
 		}
 	}
 
 	lines := strings.Split(text, "\n")
 
 	var out []string
+	var hits [][]linkHit
 	inFence := false
 	for i, l := range lines {
 		var prefix string
@@ -193,16 +217,27 @@ func (m *Model) renderRow(r row, selected, editing bool) []string {
 			// A quotation is somebody else's words; the gutter says so without
 			// needing a colour of its own.
 			body = styleMuted.Render("│ " + strings.TrimPrefix(strings.TrimSpace(l), "> "))
-		} else {
-			body = m.highlight(l, r)
+		}
+		var lineHits []linkHit
+		if !inFence && !quoted && !strings.HasPrefix(strings.TrimSpace(l), "```") {
+			body, lineHits = m.highlight(l, r)
 		}
 		if selected && !editing {
-			body = styleSelected.Render(stripANSI(l))
+			// The highlight is drawn over what is shown, links collapsed, so
+			// the block does not change shape when the cursor reaches it.
+			body = styleSelected.Render(stripANSI(body))
 		}
 		if editing {
 			body = m.renderEditLine(l, i)
+			lineHits = nil
+		}
+		shift := lipgloss.Width(prefix)
+		for j := range lineHits {
+			lineHits[j].from += shift
+			lineHits[j].to += shift
 		}
 		out = append(out, prefix+body)
+		hits = append(hits, lineHits)
 	}
 
 	if r.block.Anchor != "" && !editing {
@@ -230,35 +265,46 @@ func (m *Model) renderRow(r row, selected, editing bool) []string {
 	if editing && m.comp != nil && m.comp.active {
 		out = append(out, m.completionLines(indent+"  ")...)
 	}
-	return out
+	for len(hits) < len(out) {
+		hits = append(hits, nil) // properties and menus carry no links
+	}
+	return out, hits
 }
 
 // renderFenced draws a block containing fenced regions, replacing each fence
 // with coloured code or an aligned table. It returns nil when the block turns
 // out to have no fence after all.
-func (m *Model) renderFenced(r row, text, indent, bullet string) []string {
+func (m *Model) renderFenced(r row, text, indent, bullet string) ([]string, [][]linkHit) {
 	fences := markdown.Fences(text)
 	if len(fences) == 0 {
-		return nil
+		return nil, nil
 	}
 	cont := indent + "  "
 
 	var out []string
+	var hits [][]linkHit
 	lines := strings.Split(text, "\n")
 	fi := 0
 	first := true
-	push := func(s string) {
+	pushHits := func(s string, h []linkHit) {
+		prefix := cont
 		if first {
-			out = append(out, indent+styleBullet.Render(bullet)+" "+s)
+			prefix = indent + styleBullet.Render(bullet) + " "
 			first = false
-			return
 		}
-		out = append(out, cont+s)
+		shift := lipgloss.Width(prefix)
+		for j := range h {
+			h[j].from += shift
+			h[j].to += shift
+		}
+		out = append(out, prefix+s)
+		hits = append(hits, h)
 	}
+	push := func(s string) { pushHits(s, nil) }
 
 	for i := 0; i < len(lines); i++ {
 		if !strings.HasPrefix(strings.TrimLeft(lines[i], " \t"), "```") {
-			push(m.highlight(lines[i], r))
+			pushHits(m.highlight(lines[i], r))
 			continue
 		}
 		f := fences[min(fi, len(fences)-1)]
@@ -286,8 +332,9 @@ func (m *Model) renderFenced(r row, text, indent, bullet string) []string {
 	}
 	for _, p := range r.block.Props {
 		out = append(out, cont+styleProp.Render(p.Key+":: "+p.Value))
+		hits = append(hits, nil)
 	}
-	return out
+	return out, hits
 }
 
 // renderSectionRow draws the material below the outline: what this page groups
@@ -358,10 +405,11 @@ func (m *Model) completionLines(indent string) []string {
 }
 
 // highlight applies the semantic colour roles to inline syntax, resolving any
-// block reference in the line to the block it points at.
-func (m *Model) highlight(s string, r row) string {
+// block reference in the line to the block it points at. It also says where on
+// the line each link landed, so a mouse can find it.
+func (m *Model) highlight(s string, r row) (string, []linkHit) {
 	if s == "" {
-		return s
+		return s, nil
 	}
 	// References are numbered across the whole block but drawn a line at a
 	// time, so the count is shared. Lines before this one have already used up
@@ -373,15 +421,121 @@ func (m *Model) highlight(s string, r row) string {
 	cursor := &refCursor{embeds: embeds}
 	cursor.skip(r, s)
 
-	out := s
-	if mark := viewCheckRe.FindString(out); mark != "" {
-		rest := out[len(mark):]
+	if mark := viewCheckRe.FindString(s); mark != "" {
+		rest := s[len(mark):]
 		if strings.HasPrefix(mark, "[ ]") {
-			return styleTodo.Render("☐ ") + highlightInline(rest, cursor)
+			box := styleTodo.Render("☐ ")
+			body, hits := inlineWithLinks(rest, cursor, lipgloss.Width(box))
+			return box + body, hits
 		}
-		return styleDone.Render("☑ " + rest)
+		// Done work is drawn faded as a whole, links included, but they are
+		// still collapsed and still clickable.
+		body, hits := inlineWithLinks(rest, cursor, 2)
+		return styleDone.Render("☑ " + stripANSI(body)), hits
 	}
-	return highlightInline(out, cursor)
+	return inlineWithLinks(s, cursor, 0)
+}
+
+// linkHit is where a link was drawn: columns on one screen line, and what it
+// points at — an address or a page.
+type linkHit struct {
+	from, to int // columns, from inclusive, to exclusive
+	url      string
+	page     markdown.Link
+}
+
+func (h linkHit) target() string {
+	if h.url != "" {
+		return h.url
+	}
+	return h.page.String()
+}
+
+// inlineWithLinks draws a line piece by piece — text, then a link, then text
+// — so that the column each link starts at is known exactly rather than
+// searched for afterwards. Standard markdown links are drawn as their label
+// alone; the address is what hovering shows. col is where the line's text
+// starts on screen.
+func inlineWithLinks(s string, cursor *refCursor, col int) (string, []linkHit) {
+	type span struct {
+		start, end int
+		url        *markdown.URLLink
+		page       *markdown.Link
+	}
+	var spans []span
+	urls := markdown.URLLinks(s)
+	for i := range urls {
+		spans = append(spans, span{start: urls[i].Start, end: urls[i].End, url: &urls[i]})
+	}
+	for _, w := range viewLinkRe.FindAllStringIndex(s, -1) {
+		inside := false
+		for _, sp := range spans {
+			if w[0] < sp.end && sp.start < w[1] {
+				inside = true
+			}
+		}
+		if !inside {
+			l := markdown.ParseLinkTarget(s[w[0]+2 : w[1]-2])
+			spans = append(spans, span{start: w[0], end: w[1], page: &l})
+		}
+	}
+	sort.Slice(spans, func(i, j int) bool { return spans[i].start < spans[j].start })
+
+	var b strings.Builder
+	var hits []linkHit
+	emit := func(text string) {
+		out := highlightInline(text, cursor)
+		b.WriteString(out)
+		col += lipgloss.Width(out)
+	}
+	last := 0
+	for _, sp := range spans {
+		emit(s[last:sp.start])
+		start := col
+		if sp.url != nil {
+			label := linkLabel(*sp.url)
+			b.WriteString(styleURL.Render(label))
+			col += lipgloss.Width(label)
+			hits = append(hits, linkHit{from: start, to: col, url: sp.url.URL})
+		} else {
+			emit(s[sp.start:sp.end]) // a [[link]] keeps its own drawing
+			hits = append(hits, linkHit{from: start, to: col, page: *sp.page})
+		}
+		last = sp.end
+	}
+	emit(s[last:])
+	return b.String(), hits
+}
+
+// linkLabel is what a link is drawn as: its text, never its address. A bare
+// address has no text, so it is shortened to what identifies it — a file's
+// name, a site's host.
+func linkLabel(l markdown.URLLink) string {
+	label := l.Label
+	if l.Bare || label == "" {
+		label = shortAddress(l.URL)
+	}
+	if l.Image {
+		return "▣ " + label
+	}
+	return label
+}
+
+func shortAddress(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" {
+		return path.Base(raw)
+	}
+	switch u.Scheme {
+	case "file":
+		return path.Base(u.Path)
+	case "mailto":
+		return u.Opaque
+	}
+	if p := strings.Trim(u.Path, "/"); p != "" || u.RawQuery != "" {
+		return u.Host + "/…"
+	}
+	return u.Host
 }
 
 // refCursor hands out a block's resolved references in the order they appear.
@@ -470,6 +624,7 @@ func (m *Model) pickerView() string {
 	if m.pick.sel >= h {
 		top = m.pick.sel - h + 1
 	}
+	m.pickTop = top
 	shown := 0
 	for i := top; i < len(m.pick.filtered) && shown < h; i++ {
 		it := m.pick.filtered[i]
@@ -519,7 +674,7 @@ func (m *Model) helpView() string {
 		{"/", "search every block"},
 		{"t", "today's journal"},
 		{"b", "back to where you came from"},
-		{"g", "follow the [[link]] in this block, or open the row below"},
+		{"g / o", "follow a [[link]], or open a link or file (xdg-open)"},
 		{"[ / ]", "previous · next day"},
 		{"x", "toggle the task checkbox"},
 		{"dd", "delete the block and everything in it"},
@@ -531,6 +686,11 @@ func (m *Model) helpView() string {
 		{"", "In either: ctrl+p go to · ctrl+f search · ctrl+t today · ctrl+o back ·"},
 		{"", "alt+←→ days · ctrl+g follow · ctrl+d task · ctrl+↑↓ fold · ctrl+r reload"},
 		{"[[  ((  /", "while writing: page · block reference · commands like /todo"},
+		{"", ""},
+		{"mouse", "click a block to write there · click a link to open it ·"},
+		{"", "hover a link to see where it goes · click ▸▾ to fold · wheel moves"},
+		{"drop files", "they go onto the shelf, and their links where you are"},
+		{"shift+drag", "select text in the terminal, as usual with mouse apps"},
 	}
 	var b strings.Builder
 	b.WriteString(styleTitle.Render("tlog") + "\n\n")

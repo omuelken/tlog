@@ -115,6 +115,19 @@ type Model struct {
 	pendingR bool
 	pendingD bool
 
+	// What the last frame drew, line by line, for the mouse to find things
+	// in: which row each body line belongs to, the line that row starts on,
+	// and where its links are. bodyTop is the first body line on screen.
+	lineRow   []int
+	lineFirst []int
+	lineHits  [][]linkHit
+	bodyTop   int
+	pickTop   int
+	// hover is the link under the mouse pointer, whose address the footer
+	// shows: links are drawn as their label, and this is how to see where
+	// one goes before clicking.
+	hover *linkHit
+
 	quitting bool
 }
 
@@ -140,7 +153,9 @@ func Run(svc *app.Service, rel string) error {
 		}
 	}
 
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	// All motion, not only clicks: links are drawn as their label, and
+	// hovering is how to see the address behind one.
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseAllMotion())
 	_, err := p.Run()
 	if cerr := svc.Commit(); cerr != nil && err == nil {
 		return cerr
@@ -402,7 +417,11 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
 	case tea.KeyMsg:
+		m.hover = nil // the screen is about to change under the pointer
 		return m.key(msg)
+	case tea.MouseMsg:
+		m.mouse(msg)
+		return m, nil
 	case changedMsg:
 		m.changed(msg)
 		// Wait for the next one. Each change schedules the next wait, so the
@@ -485,7 +504,7 @@ func (m *Model) moveKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 		m.goTo(m.svc.TodayRel())
 	case "b", "backspace":
 		m.back()
-	case "g":
+	case "g", "o":
 		if !m.activateRow() {
 			m.followLink()
 		}
@@ -541,6 +560,10 @@ func (m *Model) moveKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 func (m *Model) outlineKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 	if k != "ctrl+r" {
 		m.pendingR = false
+	}
+	// A drop arrives as a paste of file paths, in either mode.
+	if m.paste(msg) {
+		return m, nil
 	}
 
 	// Going somewhere, and everything else that is not typing.
@@ -1188,19 +1211,19 @@ func (m *Model) followLink() tea.Cmd {
 	if b == nil {
 		return nil
 	}
-	links := b.Links()
-	switch len(links) {
+	items := blockLinks(b)
+	switch len(items) {
 	case 0:
-		m.status = "no [[link]] in this block"
+		m.status = "no link in this block"
 		return nil
 	case 1:
-		m.openLink(links[0])
+		if items[0].url != "" {
+			m.openURL(items[0].url)
+		} else {
+			m.openLink(items[0].link)
+		}
 		return nil
 	default:
-		items := make([]pickItem, 0, len(links))
-		for _, l := range links {
-			items = append(items, pickItem{label: l.Page, detail: l.Anchor, link: l})
-		}
 		m.pick = newPicker("follow link", items)
 		m.mode = modeLinks
 		return nil
@@ -1368,6 +1391,10 @@ func (m *Model) pickerKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 		}
 		if item.run != nil {
 			item.run(m)
+			return m, nil
+		}
+		if item.url != "" {
+			m.openURL(item.url)
 			return m, nil
 		}
 		if item.link.Page != "" {

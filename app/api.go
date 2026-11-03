@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	neturl "net/url"
-	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -207,25 +205,11 @@ func (a *API) onClose(ctx context.Context) bool {
 	return false
 }
 
-// OpenURL hands a link to the system, which opens a web address in the browser
-// and a file:// one in the file manager — that last is how `att` writes
-// attachment links into these notes.
-//
-// A note is just a file and a file could name any scheme it likes, so only the
-// schemes a link in prose is actually meant to be are opened.
-func (a *API) OpenURL(url string) error {
-	u, err := neturl.Parse(url)
-	if err != nil {
-		return fmt.Errorf("not a link: %q", url)
-	}
-	switch strings.ToLower(u.Scheme) {
-	case "http", "https", "mailto", "file":
-		runtime.BrowserOpenURL(a.ctx, url)
-		return nil
-	default:
-		return fmt.Errorf("refusing to open a %q link", u.Scheme)
-	}
-}
+// OpenURL hands a link to the system: a web address to the browser, a file —
+// an attachment, an image — to whatever opens that kind of file. Which schemes
+// are allowed, and what a relative path is relative to, is the core's rule, so
+// the window and the outliner open exactly the same things.
+func (a *API) OpenURL(url string) error { return a.svc.OpenLink("", url) }
 
 // --- slash commands ---------------------------------------------------------
 
