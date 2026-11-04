@@ -39,3 +39,11 @@ func (a *API) PasteBlocks(rel string, offset int, hash, text string, before bool
 func (a *API) ShiftBlocks(rel, hash string, offsets []int, outdent bool) (*Edit, error) {
 	return a.after(a.svc.ShiftBlocks(rel, hash, offsets, outdent))
 }
+
+// PastedPath is what to write for pasted text that names a folder or file
+// that exists — the path, or a link when it has a space in it — and "" when
+// the text is not such a path, so the window pastes it as it is.
+func (a *API) PastedPath(text string) string {
+	p, _ := a.svc.PastedPath(text)
+	return p
+}

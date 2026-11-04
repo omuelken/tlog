@@ -50,6 +50,7 @@ eval(lift("function dataURLBody"));
 eval(lift("function fileHTML"));
 eval(lift("function isOutline"));
 eval(lift("function blockCount"));
+eval(lift("function looksLikePath"));
 
 let failures = 0;
 function eq(label, got, want) {
@@ -474,6 +475,20 @@ eq("nothing is text", isOutline(""), false);
 eq("a hyphenated word is not a bullet", isOutline("-dash\n- b"), false);
 eq("one block", blockCount("- a\n  - b\n"), "1 block");
 eq("two blocks", blockCount("- a\n- b\n"), "2 blocks");
+
+// --- paths ------------------------------------------------------------------
+
+eq("a bare path that exists is a link, shown as written",
+  decorateInline("see ~/work/tlog.", [], null, ["~/work/tlog"]),
+  'see <span class="link" data-url="~/work/tlog">~/work/tlog</span>.');
+eq("one that does not is prose", decorateInline("and/or /nowhere", [], null, []), "and/or /nowhere");
+eq("only the ones the core found", decorateInline("/a and /b", [], null, ["/b"]),
+  '/a and <span class="link" data-url="/b">/b</span>');
+eq("a path is a path", looksLikePath("/Users/ada/My Folder"), true);
+eq("quoted too", looksLikePath("'/Users/ada/My Folder'"), true);
+eq("and a file URL", looksLikePath("file:///Users/ada/x"), true);
+eq("words are not", looksLikePath("some words"), false);
+eq("nor are two lines", looksLikePath("/a\n/b"), false);
 
 process.exit(failures ? 1 : 0);
 

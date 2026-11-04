@@ -183,7 +183,7 @@ const RE = {
   sep: /^\s*\|[\s:|-]+\|\s*$/,
 };
 
-function decorate(text, fences, embeds = []) {
+function decorate(text, fences, embeds = [], paths = []) {
   // A missing field must not take the page down with it. Three separate
   // crashes have started as one absent property and ended as a window that
   // draws nothing at all, and a renderer is the wrong place to find out.
@@ -200,7 +200,7 @@ function decorate(text, fences, embeds = []) {
   const flush = () => {
     if (!plain.length) return;
     out.push(
-      `<span class="ln">${plain.map((l) => decorateInline(l, embeds, cursor)).join("\n")}</span>`
+      `<span class="ln">${plain.map((l) => decorateInline(l, embeds, cursor, paths)).join("\n")}</span>`
     );
     plain = [];
   };
@@ -240,7 +240,7 @@ function decorate(text, fences, embeds = []) {
     if (RE.quote.test(line)) {
       flush();
       const body = run((l) => RE.quote.test(l)).map((l) =>
-        decorateInline(l.match(RE.quote)[1])
+        decorateInline(l.match(RE.quote)[1], [], null, paths)
       );
       out.push(`<blockquote>${body.join("\n")}</blockquote>`);
       continue;
@@ -250,7 +250,7 @@ function decorate(text, fences, embeds = []) {
       flush();
       const rows = run((l) => RE.ordered.test(l));
       const from = Number(rows[0].match(RE.ordered)[2]);
-      const items = rows.map((l) => `<li>${decorateInline(l.match(RE.ordered)[3])}</li>`);
+      const items = rows.map((l) => `<li>${decorateInline(l.match(RE.ordered)[3], [], null, paths)}</li>`);
       out.push(`<ol${from === 1 ? "" : ` start="${from}"`}>${items.join("")}</ol>`);
       continue;
     }
@@ -258,7 +258,7 @@ function decorate(text, fences, embeds = []) {
     if (RE.bullet.test(line)) {
       flush();
       const items = run((l) => RE.bullet.test(l)).map(
-        (l) => `<li>${decorateInline(l.match(RE.bullet)[2])}</li>`
+        (l) => `<li>${decorateInline(l.match(RE.bullet)[2], [], null, paths)}</li>`
       );
       out.push(`<ul>${items.join("")}</ul>`);
       continue;
@@ -267,7 +267,7 @@ function decorate(text, fences, embeds = []) {
     if (RE.heading.test(line)) {
       const m = line.match(RE.heading);
       flush();
-      out.push(`<b class="h h${m[1].length}">${decorateInline(m[2])}</b>`);
+      out.push(`<b class="h h${m[1].length}">${decorateInline(m[2], [], null, paths)}</b>`);
       i++;
       continue;
     }
@@ -350,9 +350,10 @@ function tableHTML(rows) {
 // been drawn. Neither is defaulted in the signature: the test harness lifts
 // these functions by matching braces from the first one, and a brace in the
 // parameter list would end the function before it began.
-function decorateInline(text, embeds, cursor) {
+function decorateInline(text, embeds, cursor, paths) {
   embeds = embeds || [];
   cursor = cursor || { i: 0 };
+  paths = paths || [];
   const held = [];
   const hold = (html) => {
     held.push(html);
@@ -417,6 +418,18 @@ function decorateInline(text, embeds, cursor) {
   out = out.replace(/(^|\s)((?:https?|file|mailto):[^\s<>]+)/g, (_, pre, url) =>
     pre + hold(`<span class="link" data-url="${url}">${url.replace(/^file:\/\//, "")}</span>`)
   );
+
+  // A path standing on its own is a link when the core found something there,
+  // and is shown as written; "and/or" stays prose. The text is escaped by now,
+  // so the paths are compared escaped too.
+  if (paths.length) {
+    out = out.replace(/(^|\s)((?:~\/|\.\.?\/|\/)[^\s<>()\[\]`\u0000]*)/g, (m, pre, p) => {
+      const trail = p.match(/[.,;:!?'"]*$/)[0];
+      const path = p.slice(0, p.length - trail.length);
+      if (!paths.some((x) => escapeHTML(x) === path)) return m;
+      return pre + hold(`<span class="link" data-url="${path}">${path}</span>`) + trail;
+    });
+  }
 
   out = out.replace(/`([^`]+)`/g, (_, code) => hold(`<code>${code}</code>`));
   out = out.replace(/\*\*([^*]+)\*\*/g, (_, b) => hold(`<strong>${b}</strong>`));
@@ -586,7 +599,7 @@ function renderBlocks(out, pv) {
     text.dataset.raw = b.text;
     // The checkbox is drawn beside the block, so the marker is not repeated in
     // the text. What is stored still has it, and focusing shows that.
-    text.innerHTML = decorate(b.task ? b.body : b.text, b.fences, b.embeds) || "<br>";
+    text.innerHTML = decorate(b.task ? b.body : b.text, b.fences, b.embeds, b.paths) || "<br>";
     wireBlock(text, b, pv);
     // Shift-click selects blocks rather than putting a caret in this one: from
     // the block being written, or the selection's start, to this one.
@@ -1013,7 +1026,7 @@ function wireBlock(el, b, pv) {
     hideCompletion();
     const text = raw(el);
     if (text === el.dataset.raw) {
-      el.innerHTML = decorate(text) || "<br>";
+      el.innerHTML = decorate(b.task ? b.body : text, b.fences, b.embeds, b.paths) || "<br>";
       return;
     }
     el.dataset.raw = text;
@@ -1036,6 +1049,18 @@ function wireBlock(el, b, pv) {
       if (!saved) return;
       applied(await call(() => api().PasteBlocks(saved.page.rel, saved.offset, saved.page.hash, words, false)));
       say("Pasted " + blockCount(words));
+      return;
+    }
+    // A path to a folder or file — copied in Finder, or from a terminal,
+    // escaped or quoted — is written so that it stays a path: as it is, or as
+    // a link when a space would end it early. Whether it is one is the core's
+    // to say, so the paste is held while it is asked.
+    if (looksLikePath(words)) {
+      e.preventDefault();
+      const p = await call(() => api().PastedPath(words));
+      el.focus();
+      document.execCommand("insertText", false, p || words);
+      updateCompletion(el);
       return;
     }
     const file = pastedImage(e.clipboardData);
@@ -1205,6 +1230,13 @@ function wireBlock(el, b, pv) {
       selectBlocks(rel, b.offset, Number(rows[j].dataset.offset));
     }
   });
+}
+
+// looksLikePath is a quick guess, before asking the core, that pasted text is
+// one path: a single line starting where a path starts, possibly quoted.
+function looksLikePath(text) {
+  const t = (text || "").trim().replace(/^["']/, "");
+  return !!t && !t.includes("\n") && /^(\/|~\/|file:\/\/)/.test(t);
 }
 
 function caretAtEnd(el) {

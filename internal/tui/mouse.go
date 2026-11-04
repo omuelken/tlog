@@ -273,6 +273,13 @@ func (m *Model) paste(msg tea.KeyMsg) bool {
 		m.dropFiles(files)
 		return true
 	}
+	// A folder — copied in Finder, or dragged onto the terminal — is not
+	// attached; it is written as a path, a link when it has a space in it,
+	// so it can be followed later.
+	if text, ok := m.svc.PastedPath(string(msg.Runes)); ok {
+		m.insertPath(text)
+		return true
+	}
 	if !msg.Paste {
 		return false // quick typing, not a paste: each rune is a key
 	}
@@ -298,4 +305,18 @@ func blockLinks(b *markdown.Block) []pickItem {
 		items = append(items, pickItem{label: linkLabel(u), detail: u.URL, url: u.URL})
 	}
 	return items
+}
+
+// insertPath writes a pasted path where the caret is, or as a block of its own
+// below this one while moving.
+func (m *Model) insertPath(text string) {
+	if m.mode == modeOutline && m.ed != nil {
+		if before := m.ed.textBefore(); before != "" && !strings.HasSuffix(before, " ") && !strings.HasSuffix(before, "\n") {
+			text = " " + text
+		}
+		m.ed.insert(text)
+		m.updateCompletion()
+		return
+	}
+	m.putText(text, false)
 }

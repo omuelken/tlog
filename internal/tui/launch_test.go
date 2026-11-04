@@ -251,3 +251,34 @@ func TestAScriptIsShownNotRun(t *testing.T) {
 		t.Fatalf("a script is text: it is shown, never run (mode %v, opened %v, terminals %v)", m.mode, *got, *terms)
 	}
 }
+
+func TestAPathThatLeadsSomewhereIsALink(t *testing.T) {
+	terms := stubTerminal(t)
+	m := treeModel(t, "- see ../assets/src or and/or\n\n- below\n")
+	if err := os.MkdirAll(filepath.Join(m.svc.Store.Root, "assets", "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	opened(m)
+	send(t, m, k(tea.KeyDown))
+	m.View()
+	if len(m.lineHits) == 0 || len(m.lineHits[0]) != 1 {
+		t.Fatalf("want one link on the line, got %+v", m.lineHits)
+	}
+	m.Update(clickAt(8, 1)) // "• see " is six columns, then the path
+	want := filepath.Join(m.svc.Store.Root, "assets", "src")
+	if len(*terms) != 1 || (*terms)[0] != want {
+		t.Fatalf("want a terminal in %s, got %v", want, *terms)
+	}
+}
+
+func TestAPastedFolderIsWrittenAsAPath(t *testing.T) {
+	m := treeModel(t, "- ")
+	dir := filepath.Join(m.svc.Store.Root, "assets", "My Folder")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(dir), Paste: true})
+	if m.ed == nil || !strings.HasPrefix(m.ed.String(), "[My Folder](") || !strings.Contains(m.ed.String(), "My%20Folder)") {
+		t.Fatalf("got %q", m.ed.String())
+	}
+}

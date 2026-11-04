@@ -485,6 +485,16 @@ func (m *Model) highlight(s string, r row) (string, []linkHit) {
 	}
 	cursor := &refCursor{embeds: embeds}
 	cursor.skip(r, s)
+	if r.kind == rowBlock {
+		rel := m.doc.Rel
+		if r.doc != nil {
+			rel = r.doc.Rel
+		}
+		cursor.live = func(p string) bool {
+			_, err := m.svc.ResolveLink(rel, p)
+			return err == nil
+		}
+	}
 
 	if mark := viewCheckRe.FindString(s); mark != "" {
 		rest := s[len(mark):]
@@ -550,6 +560,16 @@ func inlineWithLinks(s string, cursor *refCursor, col int) (string, []linkHit) {
 	}
 	var spans []span
 	urls := markdown.URLLinks(s)
+	// A path standing on its own is a link when something is there, and is
+	// shown as it was written rather than shortened like an address.
+	if cursor != nil && cursor.live != nil {
+		for _, p := range markdown.BarePaths(s) {
+			if cursor.live(p.URL) {
+				p.Bare = false
+				urls = append(urls, p)
+			}
+		}
+	}
 	for i := range urls {
 		spans = append(spans, span{start: urls[i].Start, end: urls[i].End, url: &urls[i]})
 	}
@@ -628,6 +648,10 @@ func shortAddress(raw string) string {
 type refCursor struct {
 	embeds []tapp.EmbedView
 	i      int
+
+	// live says whether a path written in the text leads somewhere, which is
+	// what makes it a link; nil where no path is a link.
+	live func(string) bool
 }
 
 func (c *refCursor) next() (tapp.EmbedView, bool) {

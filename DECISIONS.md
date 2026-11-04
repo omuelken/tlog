@@ -203,6 +203,14 @@ copy of the scheme list; it calls the core now, and says which note a link is
 written in — it once passed none, so its `../assets` links resolved beside the
 notes directory instead of inside it and opened nothing.
 
+**A bare path is a link only if something is there.** `~/work/tlog`,
+`/etc/hosts`, `../reports` standing on their own are links when they lead
+somewhere and prose otherwise, because "and/or" and "/todo" are prose. The
+read model says which ones lead somewhere (`BlockView.Paths`); reading never
+writes. A pasted path to something that exists is written so that it stays a
+path: as it is, from `~` under the home folder, or as `[name](path)` with the
+spaces escaped when a space would otherwise end it.
+
 **A link never runs a program.** A note is text, and text can name anything —
 an import, a paste, a synced file — and `open` runs an `.app`, a `.command` or
 an installer as readily as it shows a PDF. So `Service.LinkOpening` says what

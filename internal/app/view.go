@@ -52,6 +52,10 @@ type BlockView struct {
 	// IsEmbed says the block is nothing but a reference, and should be drawn
 	// as the block it points at together with that block's children.
 	IsEmbed bool `json:"isEmbed,omitempty"`
+
+	// Paths is the bare paths in the text that lead somewhere, as written:
+	// those are links, and any other is prose.
+	Paths []string `json:"paths,omitempty"`
 	// EmbedKids is that subtree, present only for an embed.
 	EmbedKids []EmbedView `json:"embedKids,omitempty"`
 
@@ -191,6 +195,7 @@ func (s *Service) viewWith(g *graph.Graph, d *Doc) *PageView {
 			Fences:      fenceViews(b.Text),
 		}
 		bv.Embeds = embedsFor(g, b)
+		bv.Paths = s.LivePaths(d.Rel, b.Text)
 		if isEmbed(b.Text, bv.Embeds) {
 			bv.IsEmbed = true
 			bv.EmbedKids = embedChildren(g, bv.Embeds[0])

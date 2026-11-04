@@ -121,7 +121,10 @@ Ghostty and Terminal.app are recognised, and `outliner.terminal` takes any
 other command, with `{dir}` for the folder. A program — an `.app`, a
 `.command`, an installer, anything executable — is never run from a link; a
 terminal opens in its folder instead, and the window shows it in Finder. A
-relative path is relative to the note it is written in. Click a block to put the caret there, a `▸`/`▾` bullet to
+relative path is relative to the note it is written in. A path written on its
+own — `~/work/tlog`, `/etc/hosts`, `../reports` — is a link when something is
+there; pasting one (from Finder, or a terminal) writes it so it stays one, as
+`[My Folder](~/My%20Folder)` when it has a space. Click a block to put the caret there, a `▸`/`▾` bullet to
 fold, the box of a task to tick it, and the wheel moves. **Drop files onto the
 terminal** and they are copied into the notes' `assets/`, with their links
 at the caret, or as a block of their own while moving. With the mouse in use,
