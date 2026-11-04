@@ -304,6 +304,8 @@ function ok(label, cond, detail) {
   await new Promise((r) => setTimeout(r, 100));
   ok("the agenda opens", $("agenda").hidden === false);
   ok("the agenda lists what is due", $("agendalist").textContent.includes("follow up"));
+  ok("over the page, not instead of it", $("outline").hidden === false);
+  await w.eval("closeAgenda()");
 
   // --- going back ---------------------------------------------------------
   //
@@ -567,6 +569,60 @@ function ok(label, cond, detail) {
   ok("another key settles it where it stopped", visited[visited.length - 1] !== undefined &&
     strip()[0] === $("title").textContent, strip().join(" · "));
   ok("the place stopped on is now first", startAt !== strip()[0]);
+
+  // The agenda opens over the page: a glance at what is due, after which you
+  // are where you were. It is not in the header and not a recent place.
+  {
+    const settle = () => new Promise((r) => setTimeout(r, 100));
+    const press = (init, target = w.document.activeElement || w.document) => {
+      const ev = new w.KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+      target.dispatchEvent(ev);
+      return ev;
+    };
+    const here = $("title").textContent;
+    const order = strip().join("|");
+    ok("the header holds only recent places", !strip().includes("Agenda"), strip().join(" · "));
+    press({ key: "a", metaKey: true, shiftKey: true }, w.document);
+    await settle();
+    ok("⌘⇧A opens the agenda over the page", $("agenda").hidden === false &&
+      $("outline").hidden === false && $("title").textContent === here);
+    ok("it is not added to the recent places", strip().join("|") === order, strip().join(" · "));
+    press({ key: "Escape" }, w.document);
+    ok("esc closes it", $("agenda").hidden === true);
+
+    // Opened while writing, it takes the keys and leaves the caret alone.
+    const block = $("outline").querySelector(".block > .text[data-offset]");
+    w.__el = block;
+    w.eval("placeCaretAt(__el, 3)");
+    press({ key: "a", metaKey: true, shiftKey: true });
+    await settle();
+    ok("⌘⇧A opens it from inside a block", $("agenda").hidden === false);
+    const down = press({ key: "ArrowDown" });
+    const typed = press({ key: "q" });
+    ok("the arrows and letters are the agenda's, not the block's",
+      down.defaultPrevented && typed.defaultPrevented && w.document.activeElement === block &&
+      w.eval("caretIndex(document.activeElement)") === 3);
+    press({ key: "a", metaKey: true, shiftKey: true });
+    ok("⌘⇧A again closes it", $("agenda").hidden === true);
+    ok("and the caret is where it was", w.document.activeElement === block &&
+      w.eval("caretIndex(document.activeElement)") === 3);
+
+    // Enter goes to the chosen block.
+    const asked = [];
+    const realOpen = API.OpenRel;
+    API.OpenRel = async (rel) => { asked.push(rel); return OTHER; };
+    w.eval("openAgenda()");
+    await settle();
+    ok("the first line is chosen", $("agendalist").querySelector(".agendaitem.sel") !== null);
+    press({ key: "Enter" }, w.document);
+    await settle();
+    ok("enter goes to the block's page", asked.join() === "a" && $("title").textContent === "Timetable" &&
+      $("agenda").hidden === true, `${asked.join()} ${$("title").textContent}`);
+    API.OpenRel = realOpen;
+    await w.eval("goBack()");
+    await settle();
+    ok("and back returns from it", $("title").textContent === here, $("title").textContent);
+  }
 
   // --- the journals page ----------------------------------------------------
   await w.eval("openJournals()");

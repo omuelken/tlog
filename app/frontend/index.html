@@ -70,10 +70,6 @@
 
         <section id="outline"></section>
 
-        <section id="agenda" hidden>
-          <ul id="agendalist"></ul>
-        </section>
-
         <section id="tagged" hidden>
           <h2 id="taggedhead"></h2>
           <ul id="taggedlist"></ul>
@@ -99,6 +95,14 @@
         <input id="palettequery" type="text" placeholder="Go to a journal, page or tag"
                autocomplete="off" spellcheck="false" />
         <ul id="palettelist"></ul>
+      </div>
+    </div>
+
+    <div id="agenda" hidden>
+      <div class="sheet">
+        <header><h2>Agenda</h2><button id="closeagenda">Done</button></header>
+        <ul id="agendalist"></ul>
+        <footer>↑↓ choose · ⏎ go to it · esc close</footer>
       </div>
     </div>
 

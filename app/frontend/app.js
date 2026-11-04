@@ -468,10 +468,6 @@ function render() {
     tags.appendChild(el);
   }
 
-  // Drawing a page is also how the agenda is left: every way of navigating
-  // ends up here, so putting it in one place means no route can forget.
-  showOutline();
-
   renderOutline();
   renderTagged();
   renderRefs();
@@ -2406,7 +2402,7 @@ const KEYS = [
   { key: "t", mod: true, label: "Today", run: () => openToday() },
   { key: "j", mod: true, label: "Journals", run: () => openJournals() },
   { key: "n", mod: true, label: "Next recent page", run: () => cycleRecent() },
-  { key: "a", mod: true, shift: true, label: "Agenda", run: () => openAgenda() },
+  { key: "a", mod: true, shift: true, label: "Agenda", run: () => toggleAgenda() },
   { key: "[", mod: true, label: "Back", run: () => goBack() },
   { key: "]", mod: true, label: "Forward", run: () => goForward() },
   { key: "ArrowLeft", mod: true, alt: true, label: "Previous day", run: () => shiftDay(-1) },
@@ -2504,7 +2500,6 @@ document.addEventListener("keydown", (e) => {
     if (!$("help").hidden) return void ($("help").hidden = true);
     if (!$("settings").hidden) return void ($("settings").hidden = true);
     if (sidebarOpen()) return void closeSidebar();
-    if (!$("agenda").hidden && page) return void show(page);
     return;
   }
   const mod = e.metaKey || e.ctrlKey;
@@ -2747,7 +2742,7 @@ function toggleHelp() {
     ["key", "/todo", "make the block a task; click ☐ to tick it off"],
     ["key", "/deadline fri", "give it a deadline, shown as ⏰ beside it"],
     ["key", "@fri", "a date in the text, as a link to that day's journal"],
-    ["key", k("⌘⇧A", "Ctrl+Shift+A"), "the agenda: everything due, soonest first"],
+    ["key", k("⌘⇧A", "Ctrl+Shift+A"), "the agenda, over the page: everything due, soonest first. ↑ ↓ choose, Enter goes to the block, Esc leaves you where you were"],
 
     ["head", "Links and files"],
     ["key", "click", "a page name follows it, a tag opens the tag page, a website opens in the browser, a folder in the file manager; a program is shown there, never run"],
@@ -2858,12 +2853,23 @@ if (window.runtime && window.runtime.OnFileDropOff) {
 // --- the agenda -------------------------------------------------------------
 //
 // Everything with a deadline, soonest first — the same list `tlog due` prints,
-// from the same core call. It is a view rather than a page: nothing is written
-// by looking at it, and clicking a line goes to the block itself.
+// from the same core call. It opens over the page rather than in place of it:
+// a look at what is due is a glance, and closing it leaves you exactly where
+// you were writing, caret and all. Nothing is written by looking at it, and
+// choosing a line goes to the block itself.
+
+let agendaItems = [];
+let agendaSel = 0;
+
+function toggleAgenda() {
+  return $("agenda").hidden ? openAgenda() : closeAgenda();
+}
 
 async function openAgenda() {
   const items = await call(() => api().Due(false));
   if (items === null) return;
+  agendaItems = items;
+  agendaSel = 0;
 
   const list = $("agendalist");
   list.innerHTML = "";
@@ -2873,7 +2879,7 @@ async function openAgenda() {
     li.textContent = "nothing is due — /deadline on a block puts it here";
     list.appendChild(li);
   }
-  items.forEach((it) => {
+  items.forEach((it, i) => {
     const li = document.createElement("li");
     li.className = "agendaitem t-" + (it.state || "done");
     li.innerHTML =
@@ -2881,29 +2887,69 @@ async function openAgenda() {
       `<span class="when">${escapeHTML(it.label || "")}</span>` +
       `<span class="what">${decorate(it.text)}</span>` +
       `<span class="where">${escapeHTML(it.page)}</span>`;
-    li.onclick = async () => {
-      const p = await call(() => api().OpenRel(it.rel));
-      if (!p) return;
-      focusOffset = it.offset;
-      show(p); // which puts the outline back
-    };
+    li.onclick = () => goToDue(i);
     list.appendChild(li);
   });
-
-  $("outline").hidden = true;
-  $("tagged").hidden = true;
-  $("refs").hidden = true;
-  $("pagehead").hidden = true;
+  markAgenda();
   $("agenda").hidden = false;
 }
 
-// showOutline puts the page back. render calls it, so every way of navigating
-// away from the agenda closes it without having to remember.
-function showOutline() {
+function closeAgenda() {
   $("agenda").hidden = true;
-  $("pagehead").hidden = false;
-  $("outline").hidden = false;
 }
+
+function markAgenda() {
+  [...$("agendalist").querySelectorAll(".agendaitem")].forEach((li, i) => {
+    li.classList.toggle("sel", i === agendaSel);
+    if (i === agendaSel && li.scrollIntoView) li.scrollIntoView({ block: "nearest" });
+  });
+}
+
+// goToDue closes the agenda and puts the caret on the chosen block. Going to
+// another page is a step Back can take back, as following a link is.
+async function goToDue(i) {
+  const it = agendaItems[i];
+  if (!it) return;
+  closeAgenda();
+  const p = await call(() => api().OpenRel(it.rel));
+  if (!p) return;
+  if (!page || page.rel !== p.rel) {
+    remember();
+    forward = [];
+  }
+  focusOffset = it.offset;
+  focusRel = null;
+  show(p);
+}
+
+// While the agenda is open it has the keyboard, ahead of the block behind it:
+// the caret stays where it was, and an arrow or a letter cannot move or type
+// in a block nobody can see.
+document.addEventListener("keydown", (e) => {
+  if ($("agenda").hidden) return;
+  if (MODIFIERS.has(e.key)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const n = agendaItems.length;
+  if (e.key === "Escape") return closeAgenda();
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "a") return closeAgenda();
+  if (!n) return;
+  if (e.key === "ArrowDown") agendaSel = Math.min(agendaSel + 1, n - 1);
+  else if (e.key === "ArrowUp") agendaSel = Math.max(agendaSel - 1, 0);
+  else if (e.key === "Enter") return void goToDue(agendaSel);
+  else return;
+  markAgenda();
+}, true);
+
+// A press anywhere in it keeps the focus where it was, so the caret behind
+// survives a click on the list; a press on the dimmed page closes it. A link
+// drawn in a line is part of the line here, not a way to somewhere else.
+$("agenda").addEventListener("mousedown", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.target === $("agenda")) closeAgenda();
+});
+
 
 // --- noticing an edit made somewhere else -----------------------------------
 
@@ -3002,6 +3048,7 @@ if (window.runtime && window.runtime.EventsOn) {
 }
 
 $("agendabtn").onclick = () => openAgenda();
+$("closeagenda").onclick = () => closeAgenda();
 $("journalsbtn").onclick = () => openJournals();
 
 // Omarchy's palette, when there is one, replaces the stylesheet's own. The

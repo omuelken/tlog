@@ -196,7 +196,7 @@ way `F1` does in the outliner:
 | `⌘T` | today |
 | `⌘J` | journals: every day, newest first, editable |
 | `⌘N` | the next of the recent pages in the header; Journals is always among them |
-| `⌘⇧A` | agenda |
+| `⌘⇧A` | agenda, over the page: `↑↓` choose, `⏎` goes to the block, `Esc` leaves you where you were |
 | `⌘[` `⌘]` | back, forward |
 | `⌥⌘←` `⌥⌘→` | the day before, the day after |
 | `⌘,` | settings |
