@@ -831,6 +831,12 @@ is dropped from a pasted copy, so no two blocks on a page answer to one name.
 A block cut and pasted back keeps its anchor, because the cut took the
 original away first.
 
+**`v` is text inside one block, `V` is blocks.** As in vim, lowercase is
+characters and capital is lines. `v` goes into the block under the cursor with
+a selection begun at its first character; what is cut there is written when
+the block is left, like typing. Text copied that way pastes inside a block;
+blocks copied with `V` or `yy` paste as blocks even from inside one.
+
 **A selection stays in one file.** On the journals page it stops at the edge of
 its day, as every other edit does: one operation, one file, one hash check.
 

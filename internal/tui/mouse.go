@@ -20,7 +20,7 @@ import (
 
 func (m *Model) mouse(msg tea.MouseMsg) {
 	switch m.mode {
-	case modeOutline, modeMove:
+	case modeOutline, modeMove, modeText:
 	case modePalette, modeSearch, modeLinks, modeBacklinks:
 		m.pickerMouse(msg)
 		return

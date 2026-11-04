@@ -34,6 +34,9 @@ const (
 	modeAgenda
 	modeLog
 	modeFile
+	// modeText is inside one block, selecting its text the vim way: v while
+	// moving goes there, esc comes back.
+	modeText
 )
 
 type rowKind int
@@ -133,6 +136,7 @@ type Model struct {
 	// being made with V, nil when there is none.
 	reg  register
 	vsel *visual
+	tsel *textSel
 
 	// helpTop is how far the help screen is scrolled.
 	helpTop int
@@ -492,8 +496,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if beforeMode == modeOutline && m.mode != modeOutline {
 		m.leave()
 	}
+	// Back from selecting text to moving: what was cut from the block is
+	// written, as leaving a block after typing writes it.
+	if beforeMode == modeText && m.mode != modeText && m.mode != modeOutline {
+		m.leave()
+	}
 	if m.mode != modeMove {
 		m.vsel, m.pendingY = nil, false
+	}
+	if m.mode != modeText {
+		m.tsel = nil
 	}
 	m.syncEditor()
 	if m.status != before {
@@ -615,6 +627,8 @@ func (m *Model) moveKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 		m.openPalette()
 	case "V":
 		m.startVisual()
+	case "v":
+		m.enterText()
 	case "y":
 		if m.current() != nil {
 			m.pendingY = true
@@ -772,6 +786,9 @@ func (m *Model) outlineKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if m.mode == modeText {
+		return m.textKey(msg, k)
+	}
 	if m.mode == modeMove {
 		// Letters typed quickly can arrive in one read, as one key holding
 		// several runes; "dd" would then be a key called "dd" that matches

@@ -62,6 +62,8 @@ func (m *Model) helpParts() []helpPart {
 		key("yy", "copy the block and everything under it"),
 		key("V", "select blocks: j k grow it, y copies, d cuts, > < indent and outdent it all, esc stops"),
 		key("p  P", "paste below or above: blocks as blocks, other text as a block of its own"),
+		key("v", "select text inside the block: h l w b e 0 $ move, y copies, d cuts, c changes, p pastes, "+
+			"x takes one character, i writes; esc ends the selection, esc again comes back"),
 		key("z  h l", "fold and unfold"),
 		key("a", "the agenda: everything with a deadline"),
 		key("u  U", "undo, redo — a change on another page takes you there"),

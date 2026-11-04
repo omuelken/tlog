@@ -112,6 +112,12 @@ func (m *Model) header() string {
 			mode = styleTodo.Render("SELECT")
 		}
 	}
+	if m.mode == modeText {
+		mode = styleTodo.Render("TEXT")
+		if m.tsel != nil {
+			mode = styleTodo.Render("SELECT TEXT")
+		}
+	}
 	if m.stale {
 		mode = strings.TrimSpace(styleError.Render("STALE") + " " + mode)
 	}
@@ -161,6 +167,8 @@ func (m *Model) footer() string {
 		return styleMuted.Render(m.status)
 	case m.hover != nil:
 		return styleURL.Render(m.hover.target()) + styleMuted.Render("  click to open")
+	case m.mode == modeText:
+		return styleMuted.Render("h l w b e 0 $ move · v select · y copy · d cut · c change · p paste · i write · esc back")
 	case m.rowKind() == rowDay:
 		return styleMuted.Render("enter open this day on its own · [ ] older · newer day · ↑↓ move")
 	case m.rowKind() != rowBlock:
@@ -419,6 +427,9 @@ func (m *Model) renderSectionRow(r row, selected bool) string {
 // renderEditLine draws one line of the block being edited, with the text cursor
 // shown as an inverted cell.
 func (m *Model) renderEditLine(l string, idx int) string {
+	if m.mode == modeText {
+		return m.renderTextLine(l, idx)
+	}
 	cline, ccol := m.ed.cursorPos()
 	if idx != cline {
 		return highlightRaw(l)
@@ -764,3 +775,37 @@ func truncate(s string, w int) string {
 var ansiRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
 func stripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }
+
+// renderTextLine draws one line of a block whose text is being selected: the
+// selection inverted, the cursor on its character. Colouring is left out so
+// that what is selected is exactly what is seen.
+func (m *Model) renderTextLine(l string, idx int) string {
+	start := 0
+	for i, line := range strings.Split(m.ed.String(), "\n") {
+		if i == idx {
+			break
+		}
+		start += len([]rune(line)) + 1
+	}
+	lo, hi := -1, -1
+	if m.tsel != nil {
+		lo, hi = min(m.tsel.anchor, m.ed.cur), max(m.tsel.anchor, m.ed.cur)
+	}
+	runes := []rune(l)
+	var b strings.Builder
+	for i, r := range runes {
+		at := start + i
+		switch {
+		case at == m.ed.cur:
+			b.WriteString(styleCursor.Render(string(r)))
+		case at >= lo && at <= hi:
+			b.WriteString(styleSelected.Render(string(r)))
+		default:
+			b.WriteRune(r)
+		}
+	}
+	if m.ed.cur == start+len(runes) {
+		b.WriteString(styleCursor.Render(" ")) // on an empty line
+	}
+	return b.String()
+}

@@ -1,6 +1,9 @@
 package tui
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // editor is a minimal multi-line text buffer for one block. Blocks are the
 // editing unit, so this is deliberately not a general text editor: it knows
@@ -307,4 +310,96 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// Motions for selecting text the vim way. A word is a run of letters and
+// digits, or a run of anything else that is not a space, as vim's lowercase
+// word is.
+
+func wordClass(r rune) int {
+	switch {
+	case isSpace(r):
+		return 0
+	case r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r):
+		return 1
+	default:
+		return 2
+	}
+}
+
+// wordForward moves to the start of the next word (w).
+func (e *editor) wordForward() {
+	n := len(e.runes)
+	i := e.cur
+	if i < n {
+		c := wordClass(e.runes[i])
+		for i < n && c != 0 && wordClass(e.runes[i]) == c {
+			i++
+		}
+	}
+	for i < n && isSpace(e.runes[i]) {
+		i++
+	}
+	e.cur = min(i, n)
+	e.goalCol = -1
+}
+
+// wordBack moves to the start of this word, or the one before (b).
+func (e *editor) wordBack() {
+	i := e.cur
+	for i > 0 && isSpace(e.runes[i-1]) {
+		i--
+	}
+	if i > 0 {
+		c := wordClass(e.runes[i-1])
+		for i > 0 && wordClass(e.runes[i-1]) == c {
+			i--
+		}
+	}
+	e.cur = i
+	e.goalCol = -1
+}
+
+// wordEnd moves to the last character of this word, or the next (e).
+func (e *editor) wordEnd() {
+	n := len(e.runes)
+	i := e.cur + 1
+	for i < n && isSpace(e.runes[i]) {
+		i++
+	}
+	if i < n {
+		c := wordClass(e.runes[i])
+		for i+1 < n && wordClass(e.runes[i+1]) == c {
+			i++
+		}
+	}
+	e.cur = min(i, max(0, n-1))
+	e.goalCol = -1
+}
+
+// onChar keeps the cursor on a character, as vim's normal mode does: never
+// past the end of a line, unless the line is empty.
+func (e *editor) onChar() {
+	if e.cur > 0 && (e.cur >= len(e.runes) || e.runes[e.cur] == '\n') && e.cur > e.lineStart(e.cur) {
+		e.cur--
+	}
+}
+
+// span is the text between two positions, both ends included, and the range
+// it covers.
+func (e *editor) span(a, b int) (string, int, int) {
+	lo, hi := min(a, b), max(a, b)
+	hi = min(hi+1, len(e.runes))
+	if lo >= hi {
+		return "", lo, lo
+	}
+	return string(e.runes[lo:hi]), lo, hi
+}
+
+// cut removes the runes from lo up to hi, as one step to undo.
+func (e *editor) cut(lo, hi int) {
+	e.remember("cut")
+	e.runes = append(e.runes[:lo], e.runes[hi:]...)
+	e.cur = lo
+	e.goalCol = -1
 }
