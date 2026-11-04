@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -240,10 +241,18 @@ func (m *Model) dropFiles(paths []string) {
 	for _, a := range added {
 		links = append(links, a.Link)
 	}
-	text := strings.Join(links, " ")
+	m.place(strings.Join(links, " "), true)
+	if m.errMsg == "" {
+		m.status = fmt.Sprintf("attached %s — copied into %s", plural(len(added), "file"), m.svc.AttachDir())
+	}
+}
 
+// place puts text where you are: at the caret while writing — after a space,
+// for a link, when it would otherwise run into the word before — and as a
+// block of its own after the highlighted one while moving.
+func (m *Model) place(text string, spaced bool) {
 	if m.mode == modeOutline && m.ed != nil {
-		if before := m.ed.textBefore(); before != "" && !strings.HasSuffix(before, " ") && !strings.HasSuffix(before, "\n") {
+		if before := m.ed.textBefore(); spaced && before != "" && !strings.HasSuffix(before, " ") && !strings.HasSuffix(before, "\n") {
 			text = " " + text
 		}
 		m.ed.insert(text)
@@ -256,9 +265,36 @@ func (m *Model) dropFiles(paths []string) {
 		}
 		m.apply(m.svc.AppendBlock(d.Rel, d.Hash, text))
 	}
-	if m.errMsg == "" {
-		m.status = fmt.Sprintf("attached %s — copied into %s", plural(len(added), "file"), m.svc.AttachDir())
+}
+
+// pasteClipboard is ctrl+v. The terminal's own paste (ctrl+shift+v, cmd+v)
+// only ever delivers text, so a screenshot on the clipboard never arrives
+// through it; plain ctrl+v reaches tlog as a key, and tlog reads the clipboard
+// itself. A picture is saved into assets/ and linked where you are; files
+// copied in a file manager attach like a drop; text is pasted as text.
+func (m *Model) pasteClipboard() {
+	c, err := m.svc.ReadClipboard()
+	if err != nil {
+		m.errMsg = err.Error()
+		return
 	}
+	if c.Image != nil {
+		a, err := m.svc.AttachImage(c.Image, time.Now())
+		if err != nil {
+			m.errMsg = err.Error()
+			return
+		}
+		m.place(a.Link, true)
+		if m.errMsg == "" {
+			m.status = "pasted " + a.Name + " into " + m.svc.AttachDir()
+		}
+		return
+	}
+	if files := app.DroppedFiles(c.Text); files != nil {
+		m.dropFiles(files)
+		return
+	}
+	m.place(strings.TrimRight(c.Text, "\n"), false)
 }
 
 // paste decides whether a paste is a drop. It reports whether it dealt with

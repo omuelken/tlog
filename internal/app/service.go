@@ -6,6 +6,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/tilman-schieber/tlog/internal/clipboard"
 	"os"
 	"strconv"
 	"strings"
@@ -42,6 +43,10 @@ type Service struct {
 	// following a link to a program does instead of running it. Nil means
 	// Finder, or the folder in the system's file manager; tests record.
 	Reveal func(path string) error
+
+	// Clipboard reads the system clipboard. Nil means the real one; tests put
+	// a fixed picture or text here.
+	Clipboard func() (clipboard.Content, error)
 
 	hist history // what Undo takes back; see undo.go
 }
