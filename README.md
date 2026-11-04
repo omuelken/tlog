@@ -94,7 +94,7 @@ around with single letters; `enter` picks it back up.
 | `p` / `P` | paste below · above; an outline as blocks, other text as one block |
 | `v` | select text inside the block: `h l w b e 0 $` move, `y` copy, `d` cut, `c` change, `p` paste, `x` one character, `i` write; `esc` back |
 | `z` / `h` `l` | fold · unfold |
-| `a` | agenda: everything with a deadline |
+| `a` | agenda: everything with a deadline — `space` ticks off, `a` adds what is done, newest first |
 | `u` / `U` | undo, redo — a change on another page takes you there |
 | `?` / `q` | help · quit |
 
@@ -372,7 +372,10 @@ tlog due -all     # then what is done, newest first
 the app, where it opens over the page and Esc leaves you where you were writing.
 Enter or a click goes to the block; space, or a click on its ☐ in the app, ticks
 it off without leaving, and `a` shows what is already done too, to open
-something again.
+something again. Open items stay on top, soonest first; what is done follows,
+newest first. Nothing records when a thing was finished, so newest means the
+latest deadline. The order is the core's, so the outliner, the app and
+`tlog due -all` all agree.
 
 ## Settings
 

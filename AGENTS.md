@@ -14,10 +14,15 @@ just build
 just install   # GOBIN=~/.local/bin go install ./cmd/tlog
 ```
 
+What the user runs is not the tree: the outliner and the CLI are the binary
+in `~/.local/bin` (`just install`), the window is the bundle `just app` builds.
+A change that passes its tests is not in their hands until one of those has
+run — say so, or run it, before calling it done.
+
 `just test` is not only the Go half: `app/frontend/app_test.js` and
 `omarchy/tests/model_test.js` run too. The frontend smoke test needs `jsdom`
-on `NODE_PATH` and silently skips without it, so a green run without jsdom has
-not exercised the window.
+on `NODE_PATH` and skips without it — it says so, but the run stays green — so a
+green run without jsdom has not exercised the window.
 
 Everything is testable without a terminal. The outliner is driven headlessly by
 sending `tea.KeyMsg` values to `Model.Update` and asserting on what lands on
