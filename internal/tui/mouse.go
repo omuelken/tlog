@@ -277,7 +277,9 @@ func (m *Model) paste(msg tea.KeyMsg) bool {
 		return false // quick typing, not a paste: each rune is a key
 	}
 	if m.mode == modeMove {
-		m.status = "enter to write, then paste"
+		// Pasted while moving, there is no caret to put it at: it goes in as
+		// blocks below this one, as p would put it.
+		m.putText(string(msg.Runes), false)
 		return true
 	}
 	return false

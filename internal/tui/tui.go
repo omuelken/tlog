@@ -127,6 +127,12 @@ type Model struct {
 
 	pendingR bool
 	pendingD bool
+	pendingY bool
+
+	// reg is what was last copied or cut, and vsel the selection of blocks
+	// being made with V, nil when there is none.
+	reg  register
+	vsel *visual
 
 	// helpTop is how far the help screen is scrolled.
 	helpTop int
@@ -213,6 +219,7 @@ func (m *Model) load(rel string) error {
 		blankIfEmpty(m.doc)
 	}
 	m.stale = false
+	m.vsel = nil
 	m.cur, m.top = 0, 0
 	m.buildRows()
 	if m.feed != nil && len(m.rows) > 1 {
@@ -485,6 +492,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if beforeMode == modeOutline && m.mode != modeOutline {
 		m.leave()
 	}
+	if m.mode != modeMove {
+		m.vsel, m.pendingY = nil, false
+	}
 	m.syncEditor()
 	if m.status != before {
 		m.record(m.status, false)
@@ -560,8 +570,18 @@ func (m *Model) moveKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 	if m.pendingD {
 		m.pendingD = false
 		if k == "d" {
-			m.deleteBlock()
+			m.cutBlocks()
 		}
+		return m, nil
+	}
+	if m.pendingY {
+		m.pendingY = false
+		if k == "y" {
+			m.yank()
+		}
+		return m, nil
+	}
+	if m.vsel != nil && m.visualKey(k) {
 		return m, nil
 	}
 	switch k {
@@ -588,7 +608,21 @@ func (m *Model) moveKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 			m.collapse()
 		}
 	case "p":
+		m.put(false)
+	case "P":
+		m.put(true)
+	case ":":
 		m.openPalette()
+	case "V":
+		m.startVisual()
+	case "y":
+		if m.current() != nil {
+			m.pendingY = true
+		}
+	case ">":
+		m.shiftBlocks(false)
+	case "<":
+		m.shiftBlocks(true)
 	case "/":
 		m.openSearch()
 	case "t":
@@ -612,7 +646,7 @@ func (m *Model) moveKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 	case "d":
 		if m.current() != nil {
 			m.pendingD = true
-			m.status = "d again deletes the block and everything in it"
+			m.status = "d again cuts the block and everything in it — p puts it back"
 		}
 	case "tab":
 		m.structural(m.svc.Indent)

@@ -223,3 +223,36 @@ func dropTakenAnchors(d *markdown.Document, pasted []*markdown.Block) {
 		})
 	}
 }
+
+// ShiftBlocks indents (or outdents) a selection of blocks in one write, each
+// with everything under it, so they keep their places relative to one
+// another: two siblings indented together end up side by side under the block
+// above them, as two lines shifted together in an editor do. A block that
+// cannot move — the first of its siblings has nothing to nest under, a
+// top-level one has nowhere to go out to — stays where it is; if none can,
+// the shift is refused. The result is the first block of the selection.
+func (s *Service) ShiftBlocks(rel, hash string, offsets []int, outdent bool) (*Result, error) {
+	d, roots, err := s.selection(rel, hash, offsets)
+	if err != nil {
+		return nil, err
+	}
+	moved := false
+	if outdent {
+		// Last first: each one lands just after its parent, so going
+		// backwards keeps their order.
+		for i := len(roots) - 1; i >= 0; i-- {
+			moved = d.Doc.Outdent(roots[i]) || moved
+		}
+	} else {
+		for _, b := range roots {
+			moved = d.Doc.Indent(b) || moved
+		}
+	}
+	if !moved {
+		if outdent {
+			return nil, refuse("already at the top level")
+		}
+		return nil, refuse("nothing above to nest under")
+	}
+	return s.commit(d, roots[0])
+}

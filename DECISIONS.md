@@ -811,6 +811,35 @@ the two places you go most.
 on to the front, the next step could only go back to where you came from — two
 pages, not five. Like alt-tab, the list catches up once you do something else.
 
+## Copy, cut and paste
+
+**Vim's keys, blocks for lines.** While moving, `V` selects, `y` copies, `d`
+cuts and `p`/`P` paste, as vim does with lines; a block always comes with
+everything under it. `dd` cuts rather than only deleting, so a block taken
+away by mistake is never further than `p`. The palette moved from `p` to `:`,
+vim's command line, and stays on `ctrl+p`.
+
+**What travels is the file's own text.** A copy is outline markdown exactly as
+the file stores it, so it means the same pasted into nvim, a mail or another
+note, and an outline from anywhere pastes back as blocks with their nesting.
+The core does the work (`Fragment`, `CutBlocks`, `PasteBlocks`,
+`ShiftBlocks`), so a script cuts and pastes the same way: `tlog block <addr>
+copy` and `paste`.
+
+**A copy is not the block a link points at.** An anchor the page already has
+is dropped from a pasted copy, so no two blocks on a page answer to one name.
+A block cut and pasted back keeps its anchor, because the cut took the
+original away first.
+
+**A selection stays in one file.** On the journals page it stops at the edge of
+its day, as every other edit does: one operation, one file, one hash check.
+
+**The system clipboard, and the terminal's over ssh.** Copying uses the
+system's own tool locally. Over ssh that would be the server's clipboard, so
+the text goes to the terminal as OSC 52 instead, which puts it on the
+clipboard of the machine you are at; reading it back that way is rarely
+allowed, so there `p` pastes what tlog itself copied last.
+
 ## Known gaps
 
 - A name that parses as an ISO date resolves to that day's journal rather than

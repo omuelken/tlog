@@ -1708,13 +1708,13 @@ func TestSingleLettersGoPlaces(t *testing.T) {
 	if m.doc.Rel != "pages/Ada Lovelace.md" {
 		t.Fatalf("b did not go back: %q", m.doc.Rel)
 	}
-	send(t, m, runeKey('p'))
+	send(t, m, runeKey(':'))
 	if m.mode != modePalette || m.pick.filtered[0].rel != today {
-		t.Fatalf("p did not open the palette on the recent page: %+v", m.pick)
+		t.Fatalf(": did not open the palette on the recent page: %+v", m.pick)
 	}
 	send(t, m, k(tea.KeyEnter))
 	if m.doc.Rel != today {
-		t.Fatalf("p enter did not go there: %q", m.doc.Rel)
+		t.Fatalf(": enter did not go there: %q", m.doc.Rel)
 	}
 	// Arriving somewhere by the palette is arriving to write.
 	if m.mode != modeOutline {

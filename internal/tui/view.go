@@ -108,6 +108,9 @@ func (m *Model) header() string {
 	mode := ""
 	if m.mode == modeMove {
 		mode = styleTodo.Render("MOVE")
+		if m.vsel != nil {
+			mode = styleTodo.Render("SELECT")
+		}
 	}
 	if m.stale {
 		mode = strings.TrimSpace(styleError.Render("STALE") + " " + mode)
@@ -163,7 +166,7 @@ func (m *Model) footer() string {
 	case m.rowKind() != rowBlock:
 		return styleMuted.Render("enter open · ↑↓ move · these live on other pages and are not edited here")
 	case m.mode == modeMove:
-		return styleMuted.Render("enter write · j k move · p go to · / search · t today · J journals · b back · g follow · [ ] days · x task · dd delete · z fold · ? keys · q quit")
+		return styleMuted.Render("enter write · j k move · V select · y copy · dd cut · p paste · : go to · / search · t today · J journals · b back · g follow · [ ] days · x task · dd delete · z fold · ? keys · q quit")
 	default:
 		// Typing needs no reminding; getting somewhere does.
 		return styleMuted.Render("esc to move around · ctrl+p go to · ctrl+f search · F1 keys")
@@ -180,7 +183,7 @@ func (m *Model) bodyLines() ([]string, int) {
 	for i, r := range m.rows {
 		editing := m.ed != nil && m.edBlock == r.block
 		start := len(out)
-		lines, hits := m.renderRowHits(r, i == m.cur, editing)
+		lines, hits := m.renderRowHits(r, i == m.cur || m.inSelection(i), editing)
 		out = append(out, lines...)
 		for j := range lines {
 			m.lineRow = append(m.lineRow, i)

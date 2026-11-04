@@ -167,3 +167,33 @@ func TestNothingToPasteIsRefusedQuietly(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestShiftingASelectionKeepsItTogether(t *testing.T) {
+	s := newSvc(t)
+	rel, hash, at := page(t, s, "- p\n- a\n  - a1\n- b\n- c\n")
+
+	res, err := s.ShiftBlocks(rel, hash, []int{at["a"], at["b"]}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := onDiskNow(t, s, rel); got != "- p\n  - a\n    - a1\n  - b\n- c\n" {
+		t.Fatalf("indented: %q", got)
+	}
+	d, _ := s.Load(rel)
+	a, b := d.Doc.Blocks[0].Children[0], d.Doc.Blocks[0].Children[1]
+	if d.Doc.FindByOffset(res.Offset) != a {
+		t.Fatal("the result should be the first block of the selection")
+	}
+
+	if _, err := s.ShiftBlocks(rel, d.Hash, []int{a.Start, b.Start}, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := onDiskNow(t, s, rel); got != "- p\n- a\n  - a1\n- b\n- c\n" {
+		t.Fatalf("outdented again, in order: %q", got)
+	}
+
+	d, _ = s.Load(rel)
+	if _, err := s.ShiftBlocks(rel, d.Hash, []int{d.Doc.Blocks[0].Start}, true); !Refused(err) {
+		t.Fatalf("a top-level block has nowhere to go: %v", err)
+	}
+}

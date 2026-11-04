@@ -82,14 +82,16 @@ around with single letters; `enter` picks it back up.
 |---|---|
 | `enter` / `i` | write here |
 | `j k` / `↑ ↓` | move between blocks |
-| `p` | go to: recent pages first, then commands, journals, pages; a new name makes the page |
+| `:` | go to: recent pages first, then commands, journals, pages; a new name makes the page |
 | `/` | search every block |
 | `t` / `[` `]` | today · previous, next day |
 | `J` | journals: every day, newest first, each still its own file |
 | `b` | back to where you came from |
 | `g` / `o` | follow a `[[link]]`, show a linked text file, or open any other link or file with `xdg-open`; a folder opens a terminal tab |
 | `x` | toggle the task checkbox |
-| `dd` | delete the block and everything in it |
+| `dd` / `yy` | cut · copy the block and everything in it |
+| `V` | select blocks: `j k` grow it, `y` copy, `d` cut, `>` `<` indent, `esc` stop |
+| `p` / `P` | paste below · above; an outline as blocks, other text as one block |
 | `z` / `h` `l` | fold · unfold |
 | `a` | agenda: everything with a deadline |
 | `u` / `U` | undo, redo — a change on another page takes you there |
@@ -100,6 +102,12 @@ around with single letters; `enter` picks it back up.
 `alt+←` `alt+→` days · `ctrl+g` follow · `ctrl+d` task · `ctrl+↑` `ctrl+↓` fold ·
 `ctrl+r` reload · `F1` help · `ctrl+q` quit. Backlinks, messages and settings are
 commands in the palette: `p`, then a few letters of the name.
+
+What is copied or cut goes onto the system clipboard as outline markdown —
+`- a` with `  - b` under it, as the file stores it — so it pastes into nvim or
+a mail as an outline, and an outline copied anywhere else pastes back as
+blocks. Locally that is `pbcopy` (Mac) or `wl-copy`/`xclip`; over ssh it is
+sent to your terminal (OSC 52), and `p` pastes what was last copied in tlog.
 
 **Links and the mouse.** Ordinary markdown links — `[label](url)`, images
 `![alt](url)` and bare addresses — are drawn as their label, images as `▣ alt`;
