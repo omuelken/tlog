@@ -186,7 +186,8 @@ properties survive untranslated only because markdown offers no equivalent.
 
 ## The desktop app
 
-Keys, with `⌘/` for the list:
+Keys, with `ctrl+h` (or `⌘/`) for a help page that explains them all, the
+way `F1` does in the outliner:
 
 | | |
 |---|---|
@@ -194,7 +195,7 @@ Keys, with `⌘/` for the list:
 | `⌘K` `⌘F` | search inside blocks |
 | `⌘T` | today |
 | `⌘J` | journals: every day, newest first, editable |
-| `⌘N` | the next of the recent pages in the header |
+| `⌘N` | the next of the recent pages in the header; Journals is always among them |
 | `⌘⇧A` | agenda |
 | `⌘[` `⌘]` | back, forward |
 | `⌥⌘←` `⌥⌘→` | the day before, the day after |

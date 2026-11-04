@@ -2412,7 +2412,7 @@ const KEYS = [
   { key: "ArrowLeft", mod: true, alt: true, label: "Previous day", run: () => shiftDay(-1) },
   { key: "ArrowRight", mod: true, alt: true, label: "Next day", run: () => shiftDay(1) },
   { key: ",", mod: true, label: "Settings", run: openSettings },
-  { key: "/", mod: true, label: "Keyboard shortcuts", run: toggleHelp },
+  { key: "/", mod: true, label: "Help", run: toggleHelp },
   { key: "m", mod: true, shift: true, label: "Messages", run: openLog },
   { key: "p", mod: true, label: "Go to a page", run: () => openPalette() },
   { key: "\\", mod: true, label: "Toggle sidebar", run: toggleSidebar },
@@ -2487,6 +2487,13 @@ document.addEventListener("keydown", (e) => {
   if (e.defaultPrevented) return;
   if (blockSel && selectionKey(e)) {
     e.preventDefault();
+    return;
+  }
+  // ctrl+h is the help page, as F1 is in the outliner. Ctrl and not ⌘: on a
+  // Mac ⌘H hides the window, and that is the system's.
+  if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "h") {
+    e.preventDefault();
+    toggleHelp();
     return;
   }
   // Escape backs out of whatever is covering the page, innermost first.
@@ -2662,6 +2669,10 @@ function openLog() {
 
 // toggleHelp shows the table above rather than a list written out by hand,
 // which would be a second place to keep in step and the one that goes stale.
+// The help page: what tlog is, in a few sentences, and then each thing the
+// window does with the keys that do it — the outliner's help, in the window's
+// own keys. The global shortcuts come from KEYS, so the table that runs them
+// and the page that names them cannot disagree.
 function toggleHelp() {
   const box = $("help");
   if (!box.hidden) {
@@ -2669,29 +2680,154 @@ function toggleHelp() {
     return;
   }
   const mac = navigator.platform.toLowerCase().includes("mac");
-  const rows = KEYS.map((k) => {
+  // One chord, spelt the platform's way: mac("⌘⌫", "Ctrl+Backspace").
+  const k = (onMac, elsewhere) => (mac ? onMac : elsewhere);
+  const chordOf = (key) => {
     const parts = [];
-    if (k.mod) parts.push(mac ? "⌘" : "Ctrl");
-    if (k.alt) parts.push(mac ? "⌥" : "Alt");
-    if (k.shift) parts.push("⇧");
-    parts.push({ ArrowLeft: "←", ArrowRight: "→" }[k.key] || k.key.toUpperCase());
-    return `<tr><td class="chord">${escapeHTML(parts.join(mac ? "" : "+"))}</td>` +
-           `<td>${escapeHTML(k.label)}</td></tr>`;
-  });
-  $("helplist").innerHTML =
-    "<table>" + rows.join("") +
-    `<tr><td class="chord">Esc</td><td>Close what is open; in a block, select it</td></tr>` +
-    `<tr><td class="chord">${mac ? "⇧" : "Shift+"}click ${mac ? "⇧" : "Shift+"}↑↓</td><td>Select blocks, or grow the selection</td></tr>` +
-    `<tr><td class="chord">${mac ? "⌘C ⌘X ⌘V" : "Ctrl+C X V"}</td><td>Copy, cut, paste the selected blocks, as an outline</td></tr>` +
-    `<tr><td class="chord">Tab ${mac ? "⇧" : "Shift+"}Tab ⌫</td><td>Indent, outdent, delete the selected blocks</td></tr>` +
-    `<tr><td class="chord">Tab</td><td>Indent the block being edited</td></tr>` +
-    `<tr><td class="chord">↑↓</td><td>At a block's first or last line, go to the block above or below</td></tr>` +
-    `<tr><td class="chord">${mac ? "⌥" : "Alt"}↑↓</td><td>Move the block</td></tr>` +
-    `<tr><td class="chord">${mac ? "⌘⇧⏎" : "Ctrl+Shift+Enter"}</td><td>New block above</td></tr>` +
-    `<tr><td class="chord">${mac ? "⌘⌫" : "Ctrl+Backspace"}</td><td>Delete the block and what is under it</td></tr>` +
-    "</table>";
+    if (key.mod) parts.push(k("⌘", "Ctrl"));
+    if (key.alt) parts.push(k("⌥", "Alt"));
+    if (key.shift) parts.push(k("⇧", "Shift"));
+    parts.push({ ArrowLeft: "←", ArrowRight: "→" }[key.key] || key.key.toUpperCase());
+    return parts.join(k("", "+"));
+  };
+  const root = $("rootpath").textContent || "the notes directory";
+
+  $("helplist").innerHTML = helpHTML([
+    ["para", "Notes as an outline. Every line is a block, and blocks nest under each other. " +
+      "Each day has a journal page; other pages come into being when you link to them. " +
+      `Everything is plain markdown in ${root}, committed to git as you go — edit it in any ` +
+      "editor, the outliner or the command line, and the window notices."],
+
+    ["head", "Writing"],
+    ["para", "Click a block to write in it. It shows the characters that are in the file while " +
+      "you write and is drawn again when you leave it, which is also when it is saved."],
+    ["key", "Enter", "a new block, splitting this one at the caret"],
+    ["key", k("⌥⏎  ⇧⏎", "Alt+Enter  Shift+Enter"), "a new line inside the block"],
+    ["key", k("Tab  ⇧Tab", "Tab  Shift+Tab"), "indent, outdent"],
+    ["key", k("⌥↑  ⌥↓", "Alt+↑  Alt+↓"), "move the block, with everything under it"],
+    ["key", "↑  ↓", "move between the lines of a block; on its first or last line, on to the block above or below"],
+    ["key", "⌫", "at the start of a block, join it to the one above"],
+    ["key", k("⌘⇧⏎", "Ctrl+Shift+Enter"), "a new block above this one"],
+    ["key", k("⌘⌫", "Ctrl+Backspace"), "delete the block and everything under it; git keeps the old version"],
+    ["key", k("⌘Z  ⌘⇧Z", "Ctrl+Z  Ctrl+Y"), "undo, redo: typing first, then each thing written — a change on another page takes you there"],
+    ["key", "Esc", "stop writing and select the block"],
+
+    ["head", "Selecting blocks"],
+    ["para", "A block always comes with everything under it, and what is copied is outline " +
+      "markdown — the same as the outliner copies, so blocks move between the two and into any other program."],
+    ["key", k("Esc  ⇧click", "Esc  Shift+click"), "select the block, or from the block being written to the one clicked"],
+    ["key", k("⇧↑  ⇧↓", "Shift+↑  Shift+↓"), "at the edge of a block, select it and the next; on a selection, grow it"],
+    ["key", "↑  ↓", "move the selection"],
+    ["key", k("⌘C  ⌘X  ⌘V", "Ctrl+C  Ctrl+X  Ctrl+V"), "copy, cut, paste below the selection"],
+    ["key", k("Tab  ⇧Tab  ⌫", "Tab  Shift+Tab  Backspace"), "indent, outdent, delete the selection"],
+    ["key", "Enter  Esc", "write in the block, let go"],
+    ["key", k("⌘V in a block", "Ctrl+V in a block"), "an outline pasted into text goes in as blocks; one line or prose stays text"],
+
+    ["head", "Going places"],
+    ["para", "The header names the places you were last, newest first, with Journals always " +
+      "among them. Click one to go there."],
+    ...KEYS.filter((key) => key.run !== toggleHelp)
+      .map((key) => ["key", chordOf(key), key.label.toLowerCase()]),
+    ["key", k("⌃H  ⌘/", "Ctrl+H  Ctrl+/"), "this page"],
+    ["key", "Esc", "close whatever is open over the page"],
+
+    ["head", "Mentioning"],
+    ["para", "Mention someone or something and it is linked. Everything that mentions a page " +
+      "is listed under it, so going to a person shows every note about them."],
+    ["key", "@", "the pages you write about most recently, then days: @jr finds Julia Rausenberger, @fri Friday. A name nothing answers to makes a new page"],
+    ["key", "[[", "link any page; the ]] closes itself, and the match is fuzzy"],
+    ["key", "[[Ada #person]]", "link Ada and say she is a person"],
+    ["key", "#moodle", "a topic: the block is listed on the moodle page"],
+    ["key", "((", "point at one block anywhere, found by a word in it; it is drawn as that block"],
+    ["key", k("⌃N  ⌃P", "Ctrl+N  Ctrl+P"), "move through an open list, as ↑ ↓ do; Enter or Tab takes it"],
+
+    ["head", "Tasks and dates"],
+    ["para", "Dates are typed the way you would say them — fri, morgen, in 3 days, next week, " +
+      "7 nov, 24.12. — and always written down as 2026-11-07, so they sort and mean the same in a year."],
+    ["key", "/todo", "make the block a task; click ☐ to tick it off"],
+    ["key", "/deadline fri", "give it a deadline, shown as ⏰ beside it"],
+    ["key", "@fri", "a date in the text, as a link to that day's journal"],
+    ["key", k("⌘⇧A", "Ctrl+Shift+A"), "the agenda: everything due, soonest first"],
+
+    ["head", "Links and files"],
+    ["key", "click", "a page name follows it, a tag opens the tag page, a website opens in the browser, a folder in the file manager; a program is shown there, never run"],
+    ["key", "text files", "a linked .md or script is shown over the page, with Open outside to hand it on"],
+    ["key", "drop files", "copied into the notes' assets/ and linked in the page"],
+    ["key", "paste a picture", "a screenshot is saved in assets/ and linked at the caret"],
+    ["key", "/file", "link something already attached"],
+
+    ["head", "The mouse"],
+    ["key", "● bullet", "fold and unfold what is under it — it does nothing else"],
+    ["key", "☐", "tick a task off, or open it again"],
+    ["key", "header", "a recent place"],
+
+    ["head", "Commands"],
+    ["para", "Type / in a block for the commands that change it: /todo, /done, /deadline, " +
+      "/date, /quote, /code, /table, /page, /tag, /file, /prop, /alias. What a command did " +
+      "stays in the file; the slash does not."],
+  ]);
   box.hidden = false;
+  $("helplist").scrollTop = 0;
 }
+
+// helpHTML lays out the help: headings, paragraphs, and keys in a column with
+// what they do beside them.
+function helpHTML(parts) {
+  let out = "";
+  let inTable = false;
+  const close = () => {
+    if (inTable) out += "</table>";
+    inTable = false;
+  };
+  for (const [kind, a, b] of parts) {
+    if (kind === "key") {
+      if (!inTable) out += "<table>";
+      inTable = true;
+      out += `<tr><td class="chord">${escapeHTML(a)}</td><td>${escapeHTML(b)}</td></tr>`;
+      continue;
+    }
+    close();
+    out += kind === "head" ? `<h3>${escapeHTML(a)}</h3>` : `<p>${escapeHTML(a)}</p>`;
+  }
+  close();
+  return out;
+}
+
+// helpKey is the keyboard while the help is open: it scrolls, and the keys
+// that opened it close it. It runs ahead of the block behind, so nothing
+// reaches the page: an arrow or a letter cannot move the caret or type in a
+// block nobody can see.
+function helpKey(e) {
+  if (MODIFIERS.has(e.key)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const list = $("helplist");
+  const line = 40;
+  const pageH = Math.max(line, list.clientHeight - line);
+  const k = e.key.toLowerCase();
+  const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
+  if (e.key === "Escape" || e.key === "F1" ||
+      (e.ctrlKey && !e.metaKey && k === "h") || ((e.metaKey || e.ctrlKey) && k === "/")) {
+    $("help").hidden = true;
+  } else if (plain && (e.key === "ArrowDown" || k === "j")) list.scrollTop += line;
+  else if (plain && (e.key === "ArrowUp" || k === "k")) list.scrollTop -= line;
+  else if (e.key === "PageDown" || (plain && e.key === " ")) list.scrollTop += pageH;
+  else if (e.key === "PageUp") list.scrollTop -= pageH;
+  else if (e.key === "Home") list.scrollTop = 0;
+  else if (e.key === "End") list.scrollTop = list.scrollHeight;
+}
+
+document.addEventListener("keydown", (e) => {
+  if (!$("help").hidden) helpKey(e);
+}, true);
+
+// A click in the help leaves the caret where it was, and one on the dimmed
+// page closes it.
+$("help").addEventListener("mousedown", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.target === $("help")) $("help").hidden = true;
+});
 
 // Wails reports a file drop here. The files are copied into the notes' assets/
 // and their links into the page currently open — on the journals page, into

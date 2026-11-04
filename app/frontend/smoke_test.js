@@ -451,13 +451,54 @@ function ok(label, cond, detail) {
 
   // --- the keyboard -------------------------------------------------------
   await w.eval("toggleHelp()");
-  ok("the keyboard sheet opens", $("help").hidden === false);
+  ok("the help page opens", $("help").hidden === false);
   ok("it lists the bindings from the table",
-    $("helplist").textContent.includes("Search") &&
-    $("helplist").textContent.includes("Back") &&
-    $("helplist").textContent.includes("Agenda"));
+    $("helplist").textContent.includes("search") &&
+    $("helplist").textContent.includes("back") &&
+    $("helplist").textContent.includes("agenda"));
+  ok("and says what each part of the window does, as the outliner's help does",
+    ["Writing", "Selecting blocks", "Going places", "Mentioning", "Tasks and dates",
+     "Links and files", "The mouse", "Commands"].every((h) =>
+      [...$("helplist").querySelectorAll("h3")].some((el) => el.textContent === h)),
+    [...$("helplist").querySelectorAll("h3")].map((el) => el.textContent).join(" · "));
+  ok("with the notes directory named", $("helplist").textContent.includes("/home/ada/notes"));
   await w.eval("toggleHelp()");
   ok("and closes again", $("help").hidden === true);
+  {
+    const press = (init) => w.document.dispatchEvent(new w.KeyboardEvent("keydown",
+      { bubbles: true, cancelable: true, ...init }));
+    press({ key: "h", ctrlKey: true });
+    ok("ctrl+h opens it", $("help").hidden === false);
+    press({ key: "Escape" });
+    ok("esc closes it", $("help").hidden === true);
+    press({ key: "h", ctrlKey: true });
+    press({ key: "h", ctrlKey: true });
+    ok("and ctrl+h again does too", $("help").hidden === true);
+    press({ key: "h", metaKey: true });
+    ok("⌘H is left to the system", $("help").hidden === true);
+
+    // Opened while writing, it takes the keys: nothing types into, or moves
+    // the caret in, a block hidden behind it.
+    const block = $("outline").querySelector(".block > .text[data-offset]");
+    w.__el = block;
+    w.eval("placeCaretAt(__el, 2)");
+    const send = (init) => {
+      const ev = new w.KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+      block.dispatchEvent(ev);
+      return ev;
+    };
+    send({ key: "h", ctrlKey: true });
+    ok("ctrl+h opens it from inside a block", $("help").hidden === false);
+    const down = send({ key: "ArrowDown" });
+    const typed = send({ key: "q" });
+    const enter = send({ key: "Enter" });
+    ok("the keys are the help's, not the block's",
+      down.defaultPrevented && typed.defaultPrevented && enter.defaultPrevented &&
+      $("help").hidden === false && w.eval("caretIndex(document.activeElement)") === 2);
+    send({ key: "Escape" });
+    ok("esc closes it and the caret is where it was", $("help").hidden === true &&
+      w.document.activeElement === block && w.eval("caretIndex(document.activeElement)") === 2);
+  }
 
   // --- what the window says ------------------------------------------------
   //

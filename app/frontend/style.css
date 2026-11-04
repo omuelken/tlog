@@ -737,7 +737,10 @@ table.cal td.sel { background: var(--accent); color: #fff; font-weight: 600; }
   background: rgba(0, 0, 0, 0.28);
 }
 #help .sheet {
-  width: min(420px, 92vw);
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 92vw);
+  max-height: 86vh;
   border: 1px solid var(--line);
   border-radius: 11px;
   background: var(--bg);
@@ -751,11 +754,15 @@ table.cal td.sel { background: var(--accent); color: #fff; font-weight: 600; }
   border-bottom: 1px solid var(--line);
 }
 #help h2 { margin: 0; font-size: 1rem; }
-#helplist { padding: 8px 16px 16px; }
+/* Longer than the window, so it scrolls; the header with Done stays put. */
+#helplist { padding: 4px 18px 18px; overflow-y: auto; }
+#helplist h3 { margin: 18px 0 6px; font-size: 0.929rem; }
+#helplist p { margin: 6px 0; font-size: 0.929rem; line-height: 1.45; }
 #helplist table { width: 100%; border-collapse: collapse; font-size: 0.929rem; }
-#helplist td { padding: 5px 0; }
+#helplist td { padding: 4px 0; vertical-align: baseline; }
 #helplist .chord {
-  width: 5.5rem;
+  width: 10.5rem;
+  padding-right: 12px;
   color: var(--fg-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
