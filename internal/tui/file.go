@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/tilman-schieber/tlog/internal/app"
@@ -88,7 +89,13 @@ func (m *Model) fileViewString() string {
 	m.file.top = max(0, min(m.file.top, len(lines)-h))
 
 	var b strings.Builder
-	b.WriteString(pad(styleTitle.Render(f.Name), styleMuted.Render(tildeHome(f.Path)), m.width) + "\n")
+	// The path is shortened to what fits beside the name: a long one would
+	// wrap and push the whole file down a line.
+	path := tildeHome(f.Path)
+	if m.width > 0 {
+		path = truncate(path, m.width-lipgloss.Width(f.Name)-2)
+	}
+	b.WriteString(pad(styleTitle.Render(f.Name), styleMuted.Render(path), m.width) + "\n")
 	shown := 0
 	for i := m.file.top; i < len(lines) && shown < h; i++ {
 		b.WriteString(lines[i] + "\n")
