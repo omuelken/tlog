@@ -356,8 +356,12 @@ type DueItem struct {
 	Done   bool   `json:"done"`
 }
 
-// Due lists everything with a deadline, soonest first. Done items are left out
-// unless asked for: an agenda is what is left to do.
+// Due lists everything with a deadline that is still open, soonest first.
+// Done items are left out unless asked for: an agenda is what is left to do.
+// When they are asked for they follow the open ones, newest first — the last
+// things finished are the ones worth seeing again, and the likeliest to have
+// been ticked by mistake. Nothing records when a thing was finished, so newest
+// means the latest deadline.
 //
 // This is the reason deadlines are worth storing at all. A date nobody can ask
 // about is just text that looks like a date.
@@ -399,10 +403,17 @@ func (s *Service) Due(includeDone bool) ([]DueItem, error) {
 		})
 	}
 	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Due != out[j].Due {
-			return out[i].Due < out[j].Due
+		a, b := out[i], out[j]
+		if a.Done != b.Done {
+			return !a.Done
 		}
-		return out[i].Page < out[j].Page
+		if a.Due != b.Due {
+			if a.Done {
+				return a.Due > b.Due
+			}
+			return a.Due < b.Due
+		}
+		return a.Page < b.Page
 	})
 	return out, nil
 }

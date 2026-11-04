@@ -50,3 +50,55 @@ func TestPlacesRanksEverywhereYouCouldGo(t *testing.T) {
 		}
 	}
 }
+
+// Open items come first, soonest first: what is left to do. What is done
+// follows, newest first — the last things finished are the ones worth seeing,
+// and the ones most likely to have been ticked by mistake. No date of
+// finishing is stored, so newest means latest deadline.
+func TestDueListsOpenSoonestThenDoneNewest(t *testing.T) {
+	s := newSvc(t)
+	add := func(text, due string, done bool) {
+		t.Helper()
+		if !done {
+			if _, err := s.AddTodoTo("pages/Plan.md", text, due); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+		res, err := s.AddTodoTo("pages/Plan.md", text, due)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.ToggleTask(res.Addr); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("done long ago", "2026-01-10", true)
+	add("open later", "2026-03-01", false)
+	add("done lately", "2026-02-20", true)
+	add("open soon", "2026-02-01", false)
+	add("done in between", "2026-02-01", true)
+
+	all, err := s.Due(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, it := range all {
+		got = append(got, it.Text)
+	}
+	want := []string{"open soon", "open later", "done lately", "done in between", "done long ago"}
+	if len(got) != len(want) {
+		t.Fatalf("got %q", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %q, want %q", got, want)
+		}
+	}
+
+	open, _ := s.Due(false)
+	if len(open) != 2 || open[0].Text != "open soon" {
+		t.Fatalf("open only: %+v", open)
+	}
+}

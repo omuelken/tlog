@@ -15,7 +15,7 @@ other than `$TLOG_DIR` / `~/notes`.
 | `tlog view -day <d>` | a journal: `today`, `yesterday`, `-1`, `+2`, `fri`, `2026-11-03` | as above |
 | `tlog block <addr>` | one block | text, properties, deadline; `-json` the block |
 | `tlog todo` | every open task, dated first (soonest), then undated (newest journal first) | lines; `-json` items with `addr`, `due`, `state`, `label` |
-| `tlog due [-all]` | everything with a deadline that is open; `-all` includes done | as `todo` |
+| `tlog due [-all]` | everything with a deadline that is open, soonest first; `-all` adds what is done after it, newest deadline first | as `todo` |
 | `tlog links <addr>` | what a block points at, resolved | page links with their file, block refs with the target's address and text, urls and files with what would open, or why not |
 | `tlog index` | every journal, page and tag | lines; `-json` places: `kind`, `name`, `rel` |
 | `tlog places [query]` | the same, ranked against a query like the palette does | as `index -json` |

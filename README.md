@@ -365,7 +365,7 @@ Finished work is never overdue, however long ago it was due.
 
 ```sh
 tlog due          # everything open and dated, soonest first
-tlog due -all     # including what is done
+tlog due -all     # then what is done, newest first
 ```
 
 **Agenda** is that same list, from the same call: `a` in the outliner while moving, `⌘⇧A` in
