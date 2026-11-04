@@ -29,11 +29,12 @@ type Config struct {
 	Deadline    Deadline    `toml:"deadline"`
 	Dates       Dates       `toml:"dates"`
 	Watch       Watch       `toml:"watch"`
-	App         App         `toml:"app"`
 	Outliner    Outliner    `toml:"outliner"`
+	// An old config's [app] font_size, from the retired desktop app, is
+	// ignored.
 }
 
-// Outliner is what the terminal program does that the window does not.
+// Outliner is what the outliner does that has a setting of its own.
 type Outliner struct {
 	// Terminal is the command that opens a terminal in a folder, for a link
 	// to a folder; {dir} is replaced by the folder. It is run directly, not
@@ -41,21 +42,6 @@ type Outliner struct {
 	// ask whatever terminal tlog is running in for a new tab.
 	Terminal string `toml:"terminal"`
 }
-
-// App is how the desktop window looks. Nothing here is about the notes.
-type App struct {
-	// FontSize is the text size in the window, in pixels. The outliner has no
-	// say in it: a terminal program uses the terminal's font.
-	FontSize int `toml:"font_size"`
-}
-
-// The text size has a floor and a ceiling: below ten nothing is readable,
-// above twenty-eight a line holds a handful of words.
-const (
-	MinFontSize     = 10
-	MaxFontSize     = 28
-	DefaultFontSize = 14
-)
 
 // Attachments is how files are taken into the notes. Where they go is not a
 // setting: they live in the notes directory's assets/, so that they travel
@@ -98,7 +84,7 @@ type Deadline struct {
 
 // Watch is how tlog notices an edit made somewhere else.
 type Watch struct {
-	// Enabled makes the outliner and the window redraw when a file changes on
+	// Enabled makes the outliner redraw when a file changes on
 	// disk — from nvim, from another tlog, from a git pull. Unsaved typing is
 	// never discarded for it.
 	Enabled bool `toml:"enabled"`
@@ -124,7 +110,6 @@ func Default() Config {
 		Deadline: Deadline{Property: "Deadline"},
 		Dates:    Dates{EndOfWeek: "friday"},
 		Watch:    Watch{Enabled: true, Interval: "1s"},
-		App:      App{FontSize: DefaultFontSize},
 	}
 }
 
@@ -179,15 +164,6 @@ func (c Config) NotesDir() string {
 		return d
 	}
 	return expand(c.Notes)
-}
-
-// FontSizePx is the window's text size, falling back to the default when the
-// file says something unusable.
-func (c Config) FontSizePx() int {
-	if c.App.FontSize < MinFontSize || c.App.FontSize > MaxFontSize {
-		return DefaultFontSize
-	}
-	return c.App.FontSize
 }
 
 // DebounceDuration is the commit delay, falling back to the default rather than
@@ -333,12 +309,6 @@ func (c Config) render() string {
 # does, for most people, which is why this is friday rather than sunday.
 `)
 	fmt.Fprintf(&b, "end_of_week = %q\n\n", c.Dates.EndOfWeek)
-
-	b.WriteString(`[app]
-# The text size in the desktop window, in pixels from 10 to 28. The outliner
-# uses the terminal's font and ignores this.
-`)
-	fmt.Fprintf(&b, "font_size = %d\n\n", c.App.FontSize)
 
 	b.WriteString(`[outliner]
 # What following a link to a folder runs in the outliner. {dir} is the

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/tilman-schieber/tlog/actions/workflows/ci.yml/badge.svg)](https://github.com/tilman-schieber/tlog/actions/workflows/ci.yml)
 
-A markdown-first knowledge outliner for the terminal, with a desktop app. Journals, nested blocks,
+A markdown-first knowledge outliner for the terminal. Journals, nested blocks,
 `[[page links]]` and backlinks — in plain files you can `cat`, `rg`, `nvim` and
 `git` without tlog running at all.
 
@@ -21,8 +21,8 @@ is a git repository and tlog commits to it as you work, so every structural edit
 is one `git checkout` away from being undone. Add a remote and
 `tlog push -auto on`, and it pushes too.
 
-Three ways in, one core: a terminal outliner, a CLI, and a desktop app that
-renders in the system WebView and weighs about 8 MB.
+Two ways in, one core: a terminal outliner, and a CLI that scripts and agents
+drive.
 
 **New here?** The [documentation](https://gh.tschieber.de/tlog/) starts with a
 twenty-minute tutorial and explains the ideas one at a time. Its source is in
@@ -32,11 +32,10 @@ twenty-minute tutorial and explains the ideas one at a time. Its source is in
 
 ```sh
 just install      # the CLI and the outliner, into ~/.local/bin
-just app-setup    # once: the Wails CLI, also into ~/.local/bin
-just app          # the desktop app — macOS: app/build/bin/tlog.app
 ```
 
-On Arch the desktop app also wants `gtk3` and `webkit2gtk-4.1`.
+There used to be a desktop app as well; it was retired in November 2026 and its
+code is at the tag `desktop-app-final`.
 
 ## Use
 
@@ -125,7 +124,7 @@ a new tab of the terminal you are in — tmux, zellij, kitty, WezTerm, iTerm2,
 Ghostty and Terminal.app are recognised, and `outliner.terminal` takes any
 other command, with `{dir}` for the folder. A program — an `.app`, a
 `.command`, an installer, anything executable — is never run from a link; a
-terminal opens in its folder instead, and the window shows it in Finder. A
+terminal opens in its folder instead. A
 relative path is relative to the note it is written in. A path written on its
 own — `~/work/tlog`, `/etc/hosts`, `../reports` — is a link when something is
 there; pasting one (from Finder, or a terminal) writes it so it stays one, as
@@ -135,7 +134,7 @@ terminal** and they are copied into the notes' `assets/`, with their links
 at the caret, or as a block of their own while moving. With the mouse in use,
 hold shift to select text in the terminal.
 
-A line that starts with `#` is a heading in the outliner as in the window: drawn
+A line that starts with `#` is a heading: drawn
 bold without its hashes, which come back while you write it.
 
 `shift+enter` is not distinguishable from `enter` in most terminals, so the
@@ -188,92 +187,6 @@ title: optional page metadata as YAML frontmatter
 Everything here except `key:: value` is standard markdown, because the point is
 that an agent reading your notes needs no knowledge of anyone's dialect. Block
 properties survive untranslated only because markdown offers no equivalent.
-
-## The desktop app
-
-Keys, with `ctrl+h` (or `⌘/`) for a help page that explains them all, the
-way `F1` does in the outliner:
-
-| | |
-|---|---|
-| `⌘P` | go to a journal, page or tag; a name that does not exist yet makes the page |
-| `⌘K` `⌘F` | search inside blocks |
-| `⌘T` | today |
-| `⌘J` | journals: every day, newest first, editable |
-| `⌘N` | the next of the recent pages in the header; Journals is always among them |
-| `⌘⇧A` | agenda, over the page: `↑↓` choose, `⏎` goes to the block, `☐` or space ticks it off, `a` shows what is done too, `Esc` leaves you where you were |
-| `⌃H` `⌘/` | help: what tlog is, and what every key does |
-| `⌘[` `⌘]` | back, forward |
-| `⌥⌘←` `⌥⌘→` | the day before, the day after |
-| `⌘,` | settings |
-| `⌘⇧M` | everything tlog has said |
-| `⌘⇧⏎` | a new block above this one |
-| `⌘⌫` | delete the block and what is under it |
-| `↑↓` | while writing, the lines of a block; on its first or last line, the block above or below |
-| `Esc` | close whatever is open; in a block, select the block |
-| `⇧`-click / `⇧↑↓` | select blocks, or grow the selection (`↑↓` at the edge of a block) |
-| `⌘C` `⌘X` `⌘V` | copy, cut, paste the selected blocks — outline markdown, the same as the outliner |
-| `Tab` `⇧Tab` `⌫` | indent, outdent, delete the selected blocks |
-
-An outline pasted into a block's text — copied blocks, or bullets from nvim —
-goes in as blocks below it, keeping its nesting. One line, or prose, pastes as
-text.
-
-Click a bullet to fold what is under it. A bullet does nothing else: a block
-becomes a task when you say `/todo` or give it a `/deadline`, never because you
-clicked near it. A checkbox, once there, ticks off on a click.
-Errors stay in the corner until dismissed and are kept in Messages afterwards —
-a push that failed while you were looking elsewhere is still there.
-
-**Pictures.** Drop files on the window and they are copied into `assets/`,
-linked in the page you are reading. Paste a screenshot (`⌘⌃⇧4` on a Mac) into a
-block and it is saved in `assets/` as `screenshot-<date>-<time>.png`, with its
-link typed at the caret; a clipboard with words on it pastes the words.
-Attached pictures are shown in the page, and clicking a link to a text file —
-an attached `.md`, a script — shows it over the page, with **Open outside** to
-hand it to the system. The text size is the `app.font_size` setting, in pixels
-from 10 to 28; the outliner uses the terminal's font and ignores it.
-
-Above the title are the places you were last — the same list the outliner shows,
-from the same file, so switching between the two keeps it. Click one to go
-there; `⌘N` (or `ctrl+n`) steps through them like alt-tab, the order holding
-still until you do something else. While a `[[` list is open, `ctrl+n` and
-`ctrl+p` move through that list instead.
-
-The journals page (`⌘J`, the Journals button, or "Journals" in `⌘P`) is the
-outliner's: every day under its own date, edited in place, each edit going to
-the day it was made on. The day buttons scroll to the older and newer day there,
-a date opens that day on its own, and older days are opened as you scroll down.
-
-
-The same notes in a window, for when an outline is easier to read than to type:
-sidebar of journals, pages and tags; the outline, editable in place; and the
-tagged pages and linked references below it. `⌘F` searches, `⌘T` jumps to today.
-
-Markdown is rendered while you read and raw while you write: the block under the
-caret shows the characters that are actually in the file, everything else is
-drawn. Rendered are links (wiki, markdown, bare URLs and `file://` ones), **bold**, *italics*, `inline code`, ~~strikethrough~~, fenced
-code as a highlighted monospace block, `>` quotations, numbered and bulleted
-lists, tables, headings, rules and images. Clicking a page name follows it, a tag opens the tag
-page, and a web or file link opens in the system: a folder in Finder, a
-program shown there rather than run.
-Enter makes a new block, alt+Enter a newline, Tab and shift+Tab indent, alt+↑↓
-move a block with its children, and `[[` completes — the same keys as the TUI.
-↑↓ walk the lines of a block, as drawn, and on its first or last line go on to
-the block above or below, saving what was typed on the way.
-
-It renders in the system WebView — WKWebView on macOS, WebKitGTK on Linux — so
-the whole bundle is about **8 MB** with nothing embedded. There is no Electron
-and no Chromium. It is a third adapter over the same core, which is why it can
-be that small: `app/api.go` is 100 lines of bridging and holds no logic.
-
-Because writes are compare-and-swap, the app, the outliner and nvim can all have
-the same file open at once. A lost race is refused and reported, never merged.
-
-On Hyprland with an NVIDIA card, WebKitGTK's DMA-BUF renderer can produce a
-blank window; Wails detects the driver and disables it. Build natively rather
-than shipping an AppImage — a bundled, stale `libwayland-client` is the usual
-cause of an empty window on Wayland.
 
 ## Other names for a page
 
@@ -382,19 +295,17 @@ tlog due -all     # then what is done, newest first
 
 **Agenda** is `tlog todo`'s list, from the same call: `a` in the outliner while
 moving shows every open task, what has a deadline first and soonest first, then
-the rest under "No date"; the date's colour says how soon. `⌘⇧A` in the app
-shows what has a deadline, over the page, and Esc leaves you where you were
-writing. Enter or a click goes to the block; space, or a click on its ☐ in the
-app, ticks it off without leaving, and `a` also shows the dated ones already
-done, to open something again. Open items stay on top, soonest first; what is
-done follows, newest first. Nothing records when a thing was finished, so newest
-means the latest deadline. The order is the core's, so the outliner, the app and
-`tlog due -all` all agree.
+the rest under "No date"; the date's colour says how soon. Enter or a click goes
+to the block; space ticks it off without leaving, and `a` also shows the dated
+ones already done, to open something again. Open items stay on top, soonest
+first; what is done follows, newest first. Nothing records when a thing was
+finished, so newest means the latest deadline. The order is the core's, so the
+outliner and `tlog due -all` agree.
 
 ## Settings
 
 `~/.config/tlog/config.toml`, written the first time something changes. In the
-outliner, `:` and then `settings` opens them, `⌘,` in the app, and `tlog config` prints them
+outliner, `:` and then `settings` opens them, and `tlog config` prints them
 with where each one came from.
 
 ```sh
@@ -423,7 +334,6 @@ comments are replaced; values are not.
 | `format.blank_lines` | a blank line between top-level blocks, in the files and on screen |
 | `deadline.property` | `Deadline` or `due`, whichever you prefer |
 | `dates.end_of_week` | what `eow` means: friday or sunday |
-| `app.font_size` | the text size in the desktop app, in pixels |
 
 Two of those are **not** in tlog's config file, and the menus say so. Pushing
 and the remote belong to the notes directory and live in its own git config, as
@@ -471,15 +381,14 @@ tlog files                           # what is attached, newest first
 tlog files budget                    # narrowed, fuzzily if nothing contains it
 ```
 
-In a note, `/file` offers what is attached. **Drop files onto the terminal or
-the window** and they are copied into `assets/` with their links where you are;
-a picture is shown in the page, and a screenshot pasted into a block is saved
-the same way. **Ctrl+V pastes a screenshot** in the outliner: tlog reads the
-clipboard itself (`wl-paste`, `xclip`, or `osascript` on a Mac), saves the
-picture as `screenshot-<date>-<time>.png` and links it at the caret; files
-copied in a file manager attach the same way, and text pastes as text. It has to
-be plain Ctrl+V — Ctrl+Shift+V and Cmd+V are the terminal's own paste, which
-only ever delivers text.
+In a note, `/file` offers what is attached. **Drop files onto the terminal** and
+they are copied into `assets/` with their links where you are. **Ctrl+V pastes a
+screenshot** in the outliner: tlog reads the clipboard itself (`wl-paste`,
+`xclip`, or `osascript` on a Mac), saves the picture as
+`screenshot-<date>-<time>.png` and links it at the caret; files copied in a file
+manager attach the same way, and text pastes as text. It has to be plain Ctrl+V
+— Ctrl+Shift+V and Cmd+V are the terminal's own paste, which only ever delivers
+text.
 
 The original file is never moved: attaching it to a note should not take it
 away from whatever else refers to it. Images become `![embeds]`, everything
@@ -520,8 +429,8 @@ different acts and only one of them is easy to take back:
 - **It is bounded.** A push gets 20 seconds; being offline costs a moment rather
   than hanging a command that is supposed to feel instant.
 
-A push that failed in the background is shown in the outliner's status line and
-in the app, because a failure nobody sees is the same as no backup at all.
+A push that failed in the background is shown in the outliner's status line,
+because a failure nobody sees is the same as no backup at all.
 
 ## Pages, tags and backlinks
 
@@ -653,9 +562,9 @@ skill-install` links it into `~/.claude/skills`; the repository's own
 
 ## Design
 
-The core is the product. The outliner, the CLI and the desktop app are adapters
-over `internal/app` and hold no logic of their own — which is why adding the
-third one needed no new concepts.
+The core is the product. The outliner and the CLI are adapters over
+`internal/app` and hold no logic of their own — which is why a desktop app could
+be added as a third and later retired without the core changing.
 
 **Markdown is the truth, and tlog owns the formatting of files it writes.** The
 first write normalises a file to canonical form; from then on, re-rendering the
@@ -718,35 +627,15 @@ tlog will not appear in Logseq. Keep using Logseq until you decide to stop.
 
 ## Development
 
-The frontend has no build step; its tests are plain node:
-
 ```sh
-node app/frontend/app_test.js     # the pure helpers
-node app/frontend/smoke_test.js   # boots the page against a stubbed API
+just test    # go vet, go test, and the Omarchy widget's test
+just ci      # the same with -race and gofmt, as CI runs it
 ```
 
-The smoke test needs `jsdom` and skips, saying so, without it. Install it
-outside the repository — there is no npm here — and point `NODE_PATH` at it:
-
-```sh
-npm install --prefix ~/.cache/tlog-node jsdom
-NODE_PATH=~/.cache/tlog-node/node_modules node app/frontend/smoke_test.js
-```
-
-
-```sh
-just test    # go vet, go test, and the frontend's own tests
-```
-
-Everything is testable without a terminal or a window. The outliner is driven
-headlessly by sending key messages to its model and asserting on what lands on
-disk (`internal/tui/tui_test.go`); the desktop app's bindings chain edits using
-only what the previous call returned (`app/api_test.go`), which is exactly what
-its frontend does; and the frontend's pure helpers are lifted out of `app.js`
-and tested in node (`app/frontend/app_test.js`), while the smoke test boots the
-real page in jsdom and drives it with key and mouse events — the caret, the
-pop-ups and what reaches the core (`app/frontend/smoke_test.js`). If a change
-cannot be tested that way, the logic is in the wrong layer.
+Everything is testable without a terminal. The outliner is driven headlessly by
+sending key messages to its model and asserting on what lands on disk
+(`internal/tui/tui_test.go`). If a change cannot be tested that way, the logic
+is in the wrong layer.
 
 `AGENTS.md` has the rules that matter for changing any of it.
 
@@ -754,7 +643,6 @@ cannot be tested that way, the logic is in the wrong layer.
 
 MIT — see `LICENSE`.
 
-tlog itself depends on Bubble Tea and Lip Gloss for the terminal and Wails for
-the desktop app, all MIT. Everything else it uses is the Go standard library.
+tlog itself depends on Bubble Tea and Lip Gloss for the terminal, both MIT. Everything else it uses is the Go standard library.
 Their own transitive dependencies are a mix of MIT, BSD-3-Clause, ISC and
 Apache-2.0; `go list -m all` is the authoritative list.

@@ -9,8 +9,8 @@ import (
 	"github.com/tilman-schieber/tlog/internal/config"
 )
 
-// One description of every setting, shared by `tlog config`, the outliner's
-// menu and the app's panel — so that the three cannot offer different things
+// One description of every setting, shared by `tlog config` and the outliner's
+// settings screen — so that the two cannot offer different things
 // or disagree about what a value means.
 
 // Setting is one configurable choice, as shown in a menu.
@@ -67,17 +67,12 @@ func (s *Service) Settings() []Setting {
 
 		{"format.blank_lines", boolStr(c.Format.BlankLines), "bool",
 			"A blank line between top-level blocks",
-			"reformats each file the next time it is written; the outliner and the app space the outline the same way", "config"},
+			"reformats each file the next time it is written; the outliner spaces the outline the same way", "config"},
 		{"deadline.property", c.Deadline.Property, "text",
 			"The property a deadline is written to",
 			"reading accepts any casing, and due as well", "config"},
 		{"dates.end_of_week", c.Dates.EndOfWeek, "text",
 			"What “eow” means", "friday or sunday", "config"},
-
-		{"app.font_size", strconv.Itoa(c.FontSizePx()), "text",
-			"Text size in the desktop app",
-			fmt.Sprintf("in pixels, %d to %d — the outliner uses the terminal's font",
-				config.MinFontSize, config.MaxFontSize), "config"},
 
 		{"outliner.terminal", c.Outliner.Terminal, "text",
 			"What opens a folder link in the outliner",
@@ -203,12 +198,6 @@ func setConfigValue(c config.Config, key, v string) (config.Config, error) {
 			return c, fmt.Errorf("%q is not friday or sunday", v)
 		}
 		c.Dates.EndOfWeek = l
-	case "app.font_size":
-		n, err := strconv.Atoi(strings.TrimSuffix(strings.ToLower(v), "px"))
-		if err != nil || n < config.MinFontSize || n > config.MaxFontSize {
-			return c, fmt.Errorf("%q is not a size from %d to %d", v, config.MinFontSize, config.MaxFontSize)
-		}
-		c.App.FontSize = n
 	case "outliner.terminal":
 		c.Outliner.Terminal = v
 	default:
