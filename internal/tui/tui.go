@@ -1041,11 +1041,33 @@ func (m *Model) addrOf(b *markdown.Block) app.Addr {
 // the case every other time.
 func (m *Model) ensureOnDisk(b *markdown.Block) bool {
 	d := m.docOf(b)
-	if markdown.Hash(markdown.Render(d.Doc)) == d.Hash {
+	out := markdown.Render(d.Doc)
+	if markdown.Hash(out) == d.Hash {
 		return true
 	}
 	m.save(d)
-	return m.errMsg == ""
+	if m.errMsg != "" {
+		return false
+	}
+	// The file is now what Render wrote, which moves every block after the
+	// first when it was not written that way before — a page from nvim, an
+	// import. The caller is about to address a block by where it starts, so
+	// the blocks in memory are told where they start now. Rendering and
+	// parsing keep the shape, so the two trees match block for block.
+	restart(d.Doc, markdown.Parse(out))
+	return true
+}
+
+// restart copies where each block starts and ends from a fresh parse of the
+// same tree onto the blocks in memory.
+func restart(mem, fresh *markdown.Document) {
+	a, b := mem.Flatten(), fresh.Flatten()
+	if len(a) != len(b) {
+		return
+	}
+	for i := range a {
+		a[i].Start, a[i].SelfEnd, a[i].End = b[i].Start, b[i].SelfEnd, b[i].End
+	}
 }
 
 // addrFrom turns the result of one mutation into the address for the next, so

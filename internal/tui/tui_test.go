@@ -1987,3 +1987,16 @@ func TestUndoRefusesToOverwriteAnEditMadeElsewhere(t *testing.T) {
 		t.Fatalf("got %q", m.errMsg)
 	}
 }
+
+// A page written by hand is not in the form tlog writes, so the first change
+// rewrites it and every block after the first moves. The change must still
+// reach the block it was meant for.
+func TestTheFirstChangeToAHandWrittenPageLandsWhereItWasMeant(t *testing.T) {
+	m := treeModel(t, "- a\n- b\n- c\n")
+	send(t, m, k(tea.KeyEsc))
+	cursorTo(t, m, "c")
+	send(t, m, k(tea.KeyTab))
+	if got := strings.ReplaceAll(fileOf(t, m, m.doc.Rel), "\n\n", "\n"); got != "- a\n- b\n  - c\n" {
+		t.Fatalf("got %q (status %q)", got, m.status)
+	}
+}
