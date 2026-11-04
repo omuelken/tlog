@@ -197,12 +197,14 @@ way `F1` does in the outliner:
 | `⌘J` | journals: every day, newest first, editable |
 | `⌘N` | the next of the recent pages in the header; Journals is always among them |
 | `⌘⇧A` | agenda, over the page: `↑↓` choose, `⏎` goes to the block, `Esc` leaves you where you were |
+| `⌃H` `⌘/` | help: what tlog is, and what every key does |
 | `⌘[` `⌘]` | back, forward |
 | `⌥⌘←` `⌥⌘→` | the day before, the day after |
 | `⌘,` | settings |
 | `⌘⇧M` | everything tlog has said |
 | `⌘⇧⏎` | a new block above this one |
 | `⌘⌫` | delete the block and what is under it |
+| `↑↓` | while writing, the lines of a block; on its first or last line, the block above or below |
 | `Esc` | close whatever is open; in a block, select the block |
 | `⇧`-click / `⇧↑↓` | select blocks, or grow the selection (`↑↓` at the edge of a block) |
 | `⌘C` `⌘X` `⌘V` | copy, cut, paste the selected blocks — outline markdown, the same as the outliner |
@@ -367,8 +369,9 @@ tlog due -all     # including what is done
 ```
 
 **Agenda** is that same list, from the same call: `a` in the outliner while moving, `⌘⇧A` in
-the app. Enter or a click goes to the block, and space ticks it off without
-leaving — `a` in the outliner also shows what is already done.
+the app, where it opens over the page and Esc leaves you where you were writing.
+Enter or a click goes to the block. In the outliner, space ticks it off without
+leaving, and `a` again also shows what is already done.
 
 ## Settings
 
@@ -694,7 +697,14 @@ The frontend has no build step; its tests are plain node:
 ```sh
 node app/frontend/app_test.js     # the pure helpers
 node app/frontend/smoke_test.js   # boots the page against a stubbed API
-npm install jsdom                 # the smoke test skips without it
+```
+
+The smoke test needs `jsdom` and skips, saying so, without it. Install it
+outside the repository — there is no npm here — and point `NODE_PATH` at it:
+
+```sh
+npm install --prefix ~/.cache/tlog-node jsdom
+NODE_PATH=~/.cache/tlog-node/node_modules node app/frontend/smoke_test.js
 ```
 
 
@@ -707,8 +717,10 @@ headlessly by sending key messages to its model and asserting on what lands on
 disk (`internal/tui/tui_test.go`); the desktop app's bindings chain edits using
 only what the previous call returned (`app/api_test.go`), which is exactly what
 its frontend does; and the frontend's pure helpers are lifted out of `app.js`
-and tested in node (`app/frontend/app_test.js`). If a change cannot be tested
-that way, the logic is in the wrong layer.
+and tested in node (`app/frontend/app_test.js`), while the smoke test boots the
+real page in jsdom and drives it with key and mouse events — the caret, the
+pop-ups and what reaches the core (`app/frontend/smoke_test.js`). If a change
+cannot be tested that way, the logic is in the wrong layer.
 
 `AGENTS.md` has the rules that matter for changing any of it.
 

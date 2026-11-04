@@ -126,6 +126,17 @@ character silently corrupts what the reader sees.
 - The desktop frontend has tests too: `node app/frontend/app_test.js`, run by
   `just test`. They lift the pure helpers out of `app.js` so it can stay a plain
   script the WebView loads with no module system.
+- Behaviour of the window — keys, focus, the caret, pop-ups — goes in
+  `app/frontend/smoke_test.js`, which boots the real page in jsdom against a
+  stubbed API. Install jsdom outside the repo and run it with `NODE_PATH`
+  pointing there (README, Development); never commit a `node_modules`.
+- jsdom has no layout, no `innerText` and no `contentEditable` property; the
+  smoke test shims the last two. Code that asks the layout — `getClientRects`,
+  `caretRangeFromPoint` — must fall back to the text when there is no answer,
+  or it cannot be tested and breaks in a collapsed range too.
+- A pop-up over the page (help, agenda) takes the keyboard in the capture
+  phase, ahead of the block behind it, and keeps focus where it was on a
+  click. Nothing may type into, or move the caret in, a block nobody can see.
 
 ## Things deliberately absent
 

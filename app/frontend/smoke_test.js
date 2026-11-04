@@ -19,7 +19,7 @@ let JSDOM;
 try {
   ({ JSDOM } = require("jsdom"));
 } catch {
-  console.log("frontend smoke: skipped (npm install jsdom to enable)");
+  console.log("frontend smoke: skipped — jsdom is not on NODE_PATH (README, Development)");
   process.exit(0);
 }
 
