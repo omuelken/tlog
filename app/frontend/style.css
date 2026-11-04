@@ -672,7 +672,7 @@ table.cal td.sel { background: var(--accent); color: #fff; font-weight: 600; }
 
 .agendaitem {
   display: grid;
-  grid-template-columns: 5.5rem 8rem 1fr auto;
+  grid-template-columns: 1.3rem 5.5rem 8rem 1fr auto;
   gap: 12px;
   align-items: baseline;
   padding: 7px 10px;
@@ -684,6 +684,11 @@ table.cal td.sel { background: var(--accent); color: #fff; font-weight: 600; }
 .agendaitem.sel {
   background: var(--sel);
 }
+
+/* The box ticks the line off; the rest of the line goes to the block. */
+.agendaitem .check { cursor: pointer; color: var(--fg-muted); }
+.agendaitem .check:hover { color: var(--fg); }
+.agendaitem.closed .what { color: var(--fg-muted); text-decoration: line-through; }
 
 .agendaitem .due {
   font-variant-numeric: tabular-nums;

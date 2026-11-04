@@ -622,6 +622,79 @@ function ok(label, cond, detail) {
     await w.eval("goBack()");
     await settle();
     ok("and back returns from it", $("title").textContent === here, $("title").textContent);
+
+    // Ticking a line off in the pop-up, as a checkbox on a page does: the
+    // agenda stays open, the list is asked for again, and the page behind is
+    // redrawn with the caret where it was.
+    w.__page = PAGE;
+    w.eval("show(__page)");
+    await settle();
+    let open = [
+      { addr: PAGE.rel + ":70@abc123", rel: PAGE.rel, page: "2026-09-25", offset: 70, hash: "abc123",
+        text: "she will send the notes", due: "2026-09-26", state: "soon", label: "morgen", done: false },
+      { addr: PAGE.rel + ":200@abc123", rel: PAGE.rel, page: "2026-09-25", offset: 200, hash: "abc123",
+        text: "remember", due: "2026-09-27", state: "soon", label: "übermorgen", done: false },
+    ];
+    let closed = [];
+    const dueAsked = [], commands = [], saves = [], opened2 = [];
+    const was = { Due: API.Due, ApplyCommand: API.ApplyCommand, SetText: API.SetText, OpenRel: API.OpenRel };
+    API.Due = async (all) => { dueAsked.push(all); return all ? [...open, ...closed] : open; };
+    API.ApplyCommand = async (rel, offset, hash, name) => {
+      commands.push([rel, offset, hash, name]);
+      const it = [...open, ...closed].find((x) => x.offset === offset);
+      if (name === "done") { open = open.filter((x) => x !== it); closed = [...closed, { ...it, done: true, state: "" }]; }
+      else { closed = closed.filter((x) => x !== it); open = [...open, { ...it, done: false }]; }
+      return { page: { ...PAGE, hash: "after" + commands.length }, offset };
+    };
+    API.SetText = async (rel, offset, hash, text) => { saves.push([offset, text]); return { page: PAGE, offset }; };
+    API.OpenRel = async (rel) => { opened2.push(rel); return PAGE; };
+
+    // Writing in a block, with something typed that is not saved yet.
+    const writing = () => $("outline").querySelector('.block > .text[data-offset="0"]');
+    w.__el = writing();
+    w.eval("placeCaretAt(__el, null)");
+    writing().textContent = "meeting, typed";
+    w.__el = writing();
+    w.eval("placeCaretAt(__el, 4)");
+    press({ key: "a", metaKey: true, shiftKey: true }, writing());
+    await settle();
+    ok("opening the agenda saves what was typed first", JSON.stringify(saves) === JSON.stringify([[0, "meeting, typed"]]),
+      JSON.stringify(saves));
+    ok("and the caret is still in its block", Number(w.document.activeElement.dataset.offset) === 0 &&
+      w.eval("caretIndex(document.activeElement)") === 4);
+    const checks = () => [...$("agendalist").querySelectorAll(".agendaitem .check")];
+    ok("each line has a box to tick", checks().length === 2 && checks()[0].textContent === "☐",
+      $("agendalist").innerHTML);
+
+    checks()[0].click();
+    await settle();
+    ok("clicking the box closes the line, by its address",
+      JSON.stringify(commands[0]) === JSON.stringify([PAGE.rel, 70, "abc123", "done"]), JSON.stringify(commands));
+    ok("without going anywhere", opened2.length === 0 && $("agenda").hidden === false);
+    ok("the list is asked for again, and the line is gone", checks().length === 1 &&
+      !$("agendalist").textContent.includes("she will send"), $("agendalist").textContent);
+    ok("the page behind keeps the caret where it was",
+      Number(w.document.activeElement.dataset.offset) === 0 && w.eval("caretIndex(document.activeElement)") === 4,
+      String(w.document.activeElement.dataset && w.document.activeElement.dataset.offset));
+
+    press({ key: " " }, w.document);
+    await settle();
+    ok("space ticks off the chosen line", commands[1] && commands[1][1] === 200 && commands[1][3] === "done",
+      JSON.stringify(commands));
+    ok("and what it takes is the fresh list", $("agendalist").textContent.includes("nothing is due"),
+      $("agendalist").textContent);
+
+    press({ key: "a" }, w.document);
+    await settle();
+    ok("a shows what is done too", dueAsked[dueAsked.length - 1] === true && checks().length === 2 &&
+      checks().every((c) => c.textContent === "☑") && $("agendatitle").textContent.includes("everything"));
+    checks()[0].click();
+    await settle();
+    ok("and ☑ opens it again", commands[2] && commands[2][3] === "todo", JSON.stringify(commands));
+    ok("still in the agenda", $("agenda").hidden === false && saves.length === 1);
+
+    press({ key: "Escape" }, w.document);
+    Object.assign(API, was);
   }
 
   // --- the journals page ----------------------------------------------------

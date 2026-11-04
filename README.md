@@ -196,7 +196,7 @@ way `F1` does in the outliner:
 | `⌘T` | today |
 | `⌘J` | journals: every day, newest first, editable |
 | `⌘N` | the next of the recent pages in the header; Journals is always among them |
-| `⌘⇧A` | agenda, over the page: `↑↓` choose, `⏎` goes to the block, `Esc` leaves you where you were |
+| `⌘⇧A` | agenda, over the page: `↑↓` choose, `⏎` goes to the block, `☐` or space ticks it off, `a` shows what is done too, `Esc` leaves you where you were |
 | `⌃H` `⌘/` | help: what tlog is, and what every key does |
 | `⌘[` `⌘]` | back, forward |
 | `⌥⌘←` `⌥⌘→` | the day before, the day after |
@@ -370,8 +370,9 @@ tlog due -all     # including what is done
 
 **Agenda** is that same list, from the same call: `a` in the outliner while moving, `⌘⇧A` in
 the app, where it opens over the page and Esc leaves you where you were writing.
-Enter or a click goes to the block. In the outliner, space ticks it off without
-leaving, and `a` again also shows what is already done.
+Enter or a click goes to the block; space, or a click on its ☐ in the app, ticks
+it off without leaving, and `a` shows what is already done too, to open
+something again.
 
 ## Settings
 

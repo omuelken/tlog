@@ -327,6 +327,49 @@ func TestDueListsWhatIsOpen(t *testing.T) {
 	}
 }
 
+// The agenda ticks a line off by its address alone: an open task and a block
+// that only has a deadline are both closed, and /todo opens one again.
+func TestAgendaClosesWhatIsDue(t *testing.T) {
+	a := newAPI(t)
+	p, _ := a.Today()
+
+	e, _ := a.AppendBlock(p.Rel, p.Hash, "[ ] offen")
+	e, _ = a.RunCommand(e.Page.Rel, e.Offset, e.Page.Hash, "deadline", "morgen", "[ ] offen", 9, 9)
+	e2, _ := a.AppendBlock(e.Page.Rel, e.Page.Hash, "nur ein Termin")
+	_, _ = a.RunCommand(e2.Page.Rel, e2.Offset, e2.Page.Hash, "deadline", "morgen", "nur ein Termin", 14, 14)
+
+	for range 2 {
+		due, _ := a.Due(false)
+		if len(due) == 0 {
+			t.Fatal("nothing left to close")
+		}
+		it := due[0]
+		if _, err := a.ApplyCommand(it.Rel, it.Offset, it.Hash, "done", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if open, _ := a.Due(false); len(open) != 0 {
+		t.Fatalf("still open: %+v", open)
+	}
+	all, _ := a.Due(true)
+	if len(all) != 2 || !all[0].Done || !all[1].Done {
+		t.Fatalf("both should be done, the plain one made a task: %+v", all)
+	}
+
+	it := all[0]
+	e3, err := a.ApplyCommand(it.Rel, it.Offset, it.Hash, "todo", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if open, _ := a.Due(false); len(open) != 1 {
+		t.Fatalf("/todo should open it again: %+v", open)
+	}
+	// A stale address is refused, never written through.
+	if _, err := a.ApplyCommand(it.Rel, it.Offset, it.Hash, "done", ""); err == nil {
+		t.Fatalf("a stale hash was accepted; the file is at %s", e3.Page.Hash)
+	}
+}
+
 func TestMonthIsLaidOutMondayFirst(t *testing.T) {
 	a := newAPI(t)
 	cal := a.Month("2026-09-24")

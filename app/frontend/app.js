@@ -2743,6 +2743,7 @@ function toggleHelp() {
     ["key", "/deadline fri", "give it a deadline, shown as ⏰ beside it"],
     ["key", "@fri", "a date in the text, as a link to that day's journal"],
     ["key", k("⌘⇧A", "Ctrl+Shift+A"), "the agenda, over the page: everything due, soonest first. ↑ ↓ choose, Enter goes to the block, Esc leaves you where you were"],
+    ["key", "☐ in the agenda", "tick it off there, or space on the chosen line; a shows what is done too, and ☑ opens it again"],
 
     ["head", "Links and files"],
     ["key", "click", "a page name follows it, a tag opens the tag page, a website opens in the browser, a folder in the file manager; a program is shown there, never run"],
@@ -2855,42 +2856,24 @@ if (window.runtime && window.runtime.OnFileDropOff) {
 // Everything with a deadline, soonest first — the same list `tlog due` prints,
 // from the same core call. It opens over the page rather than in place of it:
 // a look at what is due is a glance, and closing it leaves you exactly where
-// you were writing, caret and all. Nothing is written by looking at it, and
-// choosing a line goes to the block itself.
+// you were writing, caret and all. Choosing a line goes to the block itself,
+// and its box ticks it off right there, as space does in the outliner's.
 
 let agendaItems = [];
 let agendaSel = 0;
+let agendaAll = false; // what is done as well, to open something again
 
 function toggleAgenda() {
   return $("agenda").hidden ? openAgenda() : closeAgenda();
 }
 
 async function openAgenda() {
-  const items = await call(() => api().Due(false));
-  if (items === null) return;
-  agendaItems = items;
+  // Ticking a line off rewrites its file, and that may be the file being
+  // written in; what was typed is saved first, so nothing can be lost.
+  await flushWriting();
+  agendaAll = false;
   agendaSel = 0;
-
-  const list = $("agendalist");
-  list.innerHTML = "";
-  if (items.length === 0) {
-    const li = document.createElement("li");
-    li.className = "hint";
-    li.textContent = "nothing is due — /deadline on a block puts it here";
-    list.appendChild(li);
-  }
-  items.forEach((it, i) => {
-    const li = document.createElement("li");
-    li.className = "agendaitem t-" + (it.state || "done");
-    li.innerHTML =
-      `<span class="due">${escapeHTML(it.due)}</span>` +
-      `<span class="when">${escapeHTML(it.label || "")}</span>` +
-      `<span class="what">${decorate(it.text)}</span>` +
-      `<span class="where">${escapeHTML(it.page)}</span>`;
-    li.onclick = () => goToDue(i);
-    list.appendChild(li);
-  });
-  markAgenda();
+  if (!(await loadAgenda())) return;
   $("agenda").hidden = false;
 }
 
@@ -2898,11 +2881,108 @@ function closeAgenda() {
   $("agenda").hidden = true;
 }
 
+// loadAgenda asks the core for the list again. After a tick it is rebuilt
+// rather than patched: the line may be gone, and every address in that file
+// has a new hash.
+async function loadAgenda() {
+  const items = await call(() => api().Due(agendaAll));
+  if (items === null) return false;
+  agendaItems = items;
+  agendaSel = Math.max(0, Math.min(agendaSel, items.length - 1));
+  drawAgenda();
+  return true;
+}
+
+function drawAgenda() {
+  $("agendatitle").textContent = agendaAll ? "Agenda — everything" : "Agenda";
+  $("agendafoot").textContent = "↑↓ choose · ⏎ go to it · space tick off · a " +
+    (agendaAll ? "open only" : "show done too") + " · esc close";
+  const list = $("agendalist");
+  list.innerHTML = "";
+  if (agendaItems.length === 0) {
+    const li = document.createElement("li");
+    li.className = "hint";
+    li.textContent = agendaAll
+      ? "nothing has a deadline — /deadline on a block puts it here"
+      : "nothing is due — /deadline on a block puts it here";
+    list.appendChild(li);
+  }
+  agendaItems.forEach((it, i) => {
+    const li = document.createElement("li");
+    li.className = "agendaitem t-" + (it.state || "done") + (it.done ? " closed" : "");
+    const check = document.createElement("span");
+    check.className = "check";
+    check.textContent = it.done ? "☑" : "☐";
+    check.title = it.done ? "Not done after all" : "Done";
+    check.onclick = (e) => {
+      e.stopPropagation(); // a tick, not a trip to the block
+      tickDue(i);
+    };
+    li.appendChild(check);
+    li.insertAdjacentHTML("beforeend",
+      `<span class="due">${escapeHTML(it.due)}</span>` +
+      `<span class="when">${escapeHTML(it.label || "")}</span>` +
+      `<span class="what">${decorate(it.text)}</span>` +
+      `<span class="where">${escapeHTML(it.page)}</span>`);
+    li.onclick = () => goToDue(i);
+    list.appendChild(li);
+  });
+  markAgenda();
+}
+
 function markAgenda() {
   [...$("agendalist").querySelectorAll(".agendaitem")].forEach((li, i) => {
     li.classList.toggle("sel", i === agendaSel);
     if (i === agendaSel && li.scrollIntoView) li.scrollIntoView({ block: "nearest" });
   });
+}
+
+// writingBlock is the block with the caret, if one has it.
+function writingBlock() {
+  const el = document.activeElement;
+  return el && el.classList && el.classList.contains("text") && el.dataset.offset ? el : null;
+}
+
+// flushWriting saves what has been typed into the block with the caret, and
+// puts the caret back where it was in the redrawn block.
+async function flushWriting() {
+  const el = writingBlock();
+  if (!el) return;
+  const text = raw(el);
+  const pv = viewOf(el.dataset.rel);
+  if (!pv || text === el.dataset.raw) return;
+  const caret = caretIndex(el);
+  el.dataset.raw = text;
+  const saved = await call(() => api().SetText(el.dataset.rel, Number(el.dataset.offset), pv.hash, text));
+  if (saved) applied(saved, caret);
+}
+
+// tickDue closes a line, or opens a closed one again. /done rather than a
+// toggle, because a block that only has a deadline is not a task yet, and a
+// toggle would make it an open one; /done closes it whatever it was.
+//
+// The page behind is redrawn when it holds that file, and if the caret is in
+// it, it stays on the same block at the same place: a tick adds no block and
+// removes none, so the block is found again by its position.
+async function tickDue(i) {
+  const it = agendaItems[i];
+  if (!it) return;
+  const el = writingBlock();
+  let keep = null;
+  if (el && el.dataset.rel === it.rel) {
+    const pv = viewOf(it.rel);
+    const at = pv ? pv.blocks.findIndex((b) => b.offset === Number(el.dataset.offset)) : -1;
+    if (at >= 0) keep = { at, caret: caretIndex(el) };
+  }
+  const edit = await call(() =>
+    api().ApplyCommand(it.rel, it.offset, it.hash, it.done ? "todo" : "done", ""));
+  if (edit) {
+    say(it.done ? "Open again" : "Done");
+    const back = keep && edit.page.blocks[keep.at];
+    applied({ page: edit.page, offset: back ? back.offset : null }, back ? keep.caret : null);
+  }
+  agendaSel = i;
+  await loadAgenda(); // also after a refusal: the file moved, and the list is stale
 }
 
 // goToDue closes the agenda and puts the caret on the chosen block. Going to
@@ -2931,12 +3011,19 @@ document.addEventListener("keydown", (e) => {
   e.preventDefault();
   e.stopPropagation();
   const n = agendaItems.length;
+  const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
   if (e.key === "Escape") return closeAgenda();
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "a") return closeAgenda();
+  if (plain && e.key.toLowerCase() === "a") {
+    agendaAll = !agendaAll;
+    agendaSel = 0;
+    return void loadAgenda();
+  }
   if (!n) return;
   if (e.key === "ArrowDown") agendaSel = Math.min(agendaSel + 1, n - 1);
   else if (e.key === "ArrowUp") agendaSel = Math.max(agendaSel - 1, 0);
   else if (e.key === "Enter") return void goToDue(agendaSel);
+  else if (plain && e.key === " ") return void tickDue(agendaSel);
   else return;
   markAgenda();
 }, true);
@@ -2949,7 +3036,6 @@ $("agenda").addEventListener("mousedown", (e) => {
   e.stopPropagation();
   if (e.target === $("agenda")) closeAgenda();
 });
-
 
 // --- noticing an edit made somewhere else -----------------------------------
 

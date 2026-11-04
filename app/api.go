@@ -456,6 +456,18 @@ func (a *API) RunCommand(rel string, offset int, hash, name, arg, text string, f
 	return edit, nil
 }
 
+// ApplyCommand runs a slash command on a block as it stands, with nothing typed
+// to cut out — what ticking a line off in the agenda is: /done closes it,
+// whether it was an open task or only a block with a deadline, and /todo opens
+// it again.
+func (a *API) ApplyCommand(rel string, offset int, hash, name, arg string) (*Edit, error) {
+	res, err := a.svc.ApplyCommand(addr(rel, offset, hash), name, arg)
+	if err != nil {
+		return nil, err
+	}
+	return a.after(res.Result, nil)
+}
+
 // Due lists everything dated and still open, soonest first.
 func (a *API) Due(includeDone bool) ([]tapp.DueItem, error) { return a.svc.Due(includeDone) }
 
