@@ -221,6 +221,19 @@ function ok(label, cond, detail) {
     },
   });
 
+  // Nor does it have contentEditable as a property: setting it is a plain
+  // expando, the attribute never appears, and a block cannot take focus — so
+  // anything that moves the caret from block to block could not be checked.
+  Object.defineProperty(dom.window.HTMLElement.prototype, "contentEditable", {
+    configurable: true,
+    get() {
+      return this.getAttribute("contenteditable") || "inherit";
+    },
+    set(v) {
+      this.setAttribute("contenteditable", v);
+    },
+  });
+
   const w = dom.window;
   w.go = { main: { API } };
   w.runtime = undefined;
@@ -663,6 +676,71 @@ function ok(label, cond, detail) {
     key({ key: "Escape" });
     Object.assign(API, was);
     w.runtime = undefined;
+  }
+
+  // --- the arrows while writing ---------------------------------------------
+  //
+  // Each block is its own editable, so ↑ on the first line and ↓ on the last
+  // had nowhere to go and the caret stayed where it was: the only way to the
+  // next block was the mouse.
+  {
+    w.__page = PAGE;
+    w.eval("show(__page)");
+    await new Promise((r) => setTimeout(r, 60));
+    const saves = [];
+    const realSet = API.SetText;
+    API.SetText = async (rel, offset, hash, text) => { saves.push([offset, text]); return { page: PAGE, offset }; };
+    const texts = () => [...$("outline").querySelectorAll(".block > .text[data-offset]")];
+    const at = () => Number(w.document.activeElement.dataset.offset);
+    const settle = () => new Promise((r) => setTimeout(r, 60));
+    const caret = (el, n) => { w.__el = el; w.eval(`placeCaretAt(__el, ${n === null ? "null" : n})`); };
+    const arrow = (k) => {
+      const ev = new w.KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true });
+      w.document.activeElement.dispatchEvent(ev);
+      return ev;
+    };
+
+    caret(texts()[0], null);
+    let ev = arrow("ArrowDown");
+    await settle();
+    ok("↓ on a block's last line goes to the block below", ev.defaultPrevented && at() === 70, String(at()));
+    ok("and the caret starts at its beginning", w.eval("caretIndex(document.activeElement)") === 0);
+
+    ev = arrow("ArrowUp");
+    await settle();
+    ok("↑ on a block's first line goes to the block above", ev.defaultPrevented && at() === 0, String(at()));
+    ok("and the caret lands at its end",
+      w.eval("caretIndex(document.activeElement)") === PAGE.blocks[0].text.length);
+    ok("moving through unchanged blocks writes nothing", saves.length === 0, JSON.stringify(saves));
+
+    // A block of several lines: the arrows walk its lines before leaving it.
+    const fence = texts().find((t) => Number(t.dataset.offset) === 130);
+    caret(fence, 0);
+    ev = arrow("ArrowDown");
+    ok("↓ above a block's last line stays in it", !ev.defaultPrevented && at() === 130, String(at()));
+    caret(fence, fence.textContent.length);
+    ev = arrow("ArrowUp");
+    ok("↑ below its first line stays in it", !ev.defaultPrevented && at() === 130, String(at()));
+
+    caret(texts()[0], 0);
+    ev = arrow("ArrowUp");
+    ok("↑ in the first block is the browser's own", !ev.defaultPrevented && at() === 0, String(at()));
+
+    // What was typed is saved on the way out, once, and the move still happens.
+    const first = texts()[0];
+    caret(first, null);
+    first.textContent = "meeting, edited";
+    caret(first, null);
+    arrow("ArrowDown");
+    await settle();
+    ok("leaving a changed block by ↓ saves it", JSON.stringify(saves) === JSON.stringify([[0, "meeting, edited"]]),
+      JSON.stringify(saves));
+    ok("and arrives in the block below", at() === 70, String(at()));
+    w.document.activeElement.blur();
+    await settle();
+    ok("the blur after it writes nothing more", saves.length === 1, JSON.stringify(saves));
+
+    API.SetText = realSet;
   }
 
   console.log(failures === 0 ? "frontend smoke: all pass" : `frontend smoke: ${failures} FAILURES`);

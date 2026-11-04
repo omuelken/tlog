@@ -251,6 +251,8 @@ page, and a web or file link opens in the system: a folder in Finder, a
 program shown there rather than run.
 Enter makes a new block, alt+Enter a newline, Tab and shift+Tab indent, alt+↑↓
 move a block with its children, and `[[` completes — the same keys as the TUI.
+↑↓ walk the lines of a block, as drawn, and on its first or last line go on to
+the block above or below, saving what was typed on the way.
 
 It renders in the system WebView — WKWebView on macOS, WebKitGTK on Linux — so
 the whole bundle is about **8 MB** with nothing embedded. There is no Electron

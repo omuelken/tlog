@@ -1228,8 +1228,145 @@ function wireBlock(el, b, pv) {
       e.preventDefault();
       el.blur();
       selectBlocks(rel, b.offset, Number(rows[j].dataset.offset));
+      return;
+    }
+
+    // A plain arrow on the block's first or last line goes on to the block
+    // above or below, as in any outliner. Inside the block the browser moves
+    // between lines as it always did; each block being its own editable is
+    // what used to leave the caret stuck at the edge.
+    if (isPlainVertical(e)) {
+      const dir = e.key === "ArrowUp" ? -1 : 1;
+      if (!caretOnEdgeLine(el, dir)) return;
+      const rows = allBlockTexts();
+      const i = rows.indexOf(el);
+      const target = rows[i + dir];
+      if (i < 0 || !target) return; // the top or bottom of the page: the browser's own move
+      e.preventDefault();
+      if (goalX === null) goalX = caretX();
+      const x = goalX;
+
+      const text = raw(el);
+      if (text === el.dataset.raw) return enterBlock(target, dir, x);
+      // Changed: save first, the way Enter and Tab do, so the blur that
+      // follows has nothing left to write. The redraw replaces this page's
+      // elements, so the block to go to is found again by where this one
+      // landed; a block in another day of the journals page is not redrawn.
+      el.dataset.raw = text;
+      const saved = await call(() => api().SetText(rel, b.offset, cur().hash, text));
+      if (!saved) return;
+      applied(saved);
+      let dest = target;
+      if (target.dataset.rel === rel || !target.isConnected) {
+        const now = allBlockTexts();
+        const j = now.findIndex(
+          (t) => t.dataset.rel === saved.page.rel && Number(t.dataset.offset) === saved.offset
+        );
+        dest = j < 0 ? null : now[j + dir];
+      }
+      if (dest) enterBlock(dest, dir, x);
     }
   });
+}
+
+// --- moving between blocks with the arrows -----------------------------------
+//
+// "First line" and "last line" are the lines as drawn, so a long line that
+// wraps still lets the arrows walk through it before leaving the block. Where
+// there is no layout to ask (jsdom, a collapsed range with no box), the text's
+// own newlines decide.
+
+// goalX is the column a run of ↑↓ is aiming for, kept across blocks so that
+// passing through a short one does not drag the caret to the left. Any other
+// key, or a click, starts a new run.
+let goalX = null;
+
+document.addEventListener("keydown", (e) => {
+  if (!isPlainVertical(e)) goalX = null;
+}, true);
+document.addEventListener("mousedown", () => { goalX = null; }, true);
+
+function isPlainVertical(e) {
+  return (e.key === "ArrowUp" || e.key === "ArrowDown") &&
+    !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey;
+}
+
+// allBlockTexts is every editable block on screen, top to bottom, across all
+// the days of the journals page. Folded blocks are not drawn, so they are not
+// in it.
+function allBlockTexts() {
+  return [...document.querySelectorAll("#outline .block > .text[data-offset]")];
+}
+
+// rectOf is the box of a collapsed range, or null where there is none to have.
+function rectOf(range) {
+  if (!range || typeof range.getClientRects !== "function") return null;
+  const rects = range.getClientRects();
+  const r = rects && rects.length ? rects[0] : null;
+  return r && r.height ? r : null;
+}
+
+function caretRect() {
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return null;
+  const r = sel.getRangeAt(0).cloneRange();
+  r.collapse(true);
+  return rectOf(r);
+}
+
+function caretX() {
+  const r = caretRect();
+  return r ? r.left : null;
+}
+
+// edgeRect is the box of the block's first character (atEnd false) or of the
+// place just past its last one.
+function edgeRect(el, atEnd) {
+  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let first = null, last = null;
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    if (!n.textContent.length) continue;
+    if (!first) first = n;
+    last = n;
+  }
+  if (!first) return null;
+  const r = document.createRange();
+  if (atEnd) r.setStart(last, last.textContent.length);
+  else r.setStart(first, 0);
+  r.collapse(true);
+  return rectOf(r);
+}
+
+// caretOnEdgeLine reports whether the caret sits on the block's first line
+// (dir -1) or its last (dir 1), so that ↑ or ↓ would have nowhere to go inside
+// it. A selection is left to the browser.
+function caretOnEdgeLine(el, dir) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !sel.isCollapsed) return false;
+  const text = raw(el);
+  const at = caretIndex(el);
+  const logical = dir < 0 ? !text.slice(0, at).includes("\n") : !text.slice(at).includes("\n");
+  if (!logical) return false;
+  const c = caretRect();
+  const edge = edgeRect(el, dir > 0);
+  if (!c || !edge) return true;
+  return Math.abs(c.top - edge.top) < c.height / 2;
+}
+
+// enterBlock puts the caret into a block arrived at by an arrow: on its last
+// line coming up, its first coming down, as near the column x as it goes.
+function enterBlock(el, dir, x) {
+  const row = el.parentElement;
+  if (row && row.scrollIntoView) row.scrollIntoView({ block: "nearest" });
+  placeCaretAt(el, dir < 0 ? null : 0); // focus swaps in the raw text
+  if (x === null || typeof document.caretRangeFromPoint !== "function") return;
+  const line = edgeRect(el, dir < 0);
+  if (!line) return;
+  const r = document.caretRangeFromPoint(x, line.top + line.height / 2);
+  if (!r || !el.contains(r.startContainer)) return;
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(r);
 }
 
 // looksLikePath is a quick guess, before asking the core, that pasted text is
@@ -2548,6 +2685,7 @@ function toggleHelp() {
     `<tr><td class="chord">${mac ? "⌘C ⌘X ⌘V" : "Ctrl+C X V"}</td><td>Copy, cut, paste the selected blocks, as an outline</td></tr>` +
     `<tr><td class="chord">Tab ${mac ? "⇧" : "Shift+"}Tab ⌫</td><td>Indent, outdent, delete the selected blocks</td></tr>` +
     `<tr><td class="chord">Tab</td><td>Indent the block being edited</td></tr>` +
+    `<tr><td class="chord">↑↓</td><td>At a block's first or last line, go to the block above or below</td></tr>` +
     `<tr><td class="chord">${mac ? "⌥" : "Alt"}↑↓</td><td>Move the block</td></tr>` +
     `<tr><td class="chord">${mac ? "⌘⇧⏎" : "Ctrl+Shift+Enter"}</td><td>New block above</td></tr>` +
     `<tr><td class="chord">${mac ? "⌘⌫" : "Ctrl+Backspace"}</td><td>Delete the block and what is under it</td></tr>` +
