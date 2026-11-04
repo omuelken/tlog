@@ -36,6 +36,9 @@ const blockUsage = `tlog block <addr> [operation]
   prop <key> [value]       set a block property; no value removes it
   cmd <name> [arg]         any slash command by name — see: tlog commands
   ref                      give it a durable name and print a link to it
+  copy                     print it and everything under it as outline markdown
+  paste [-before] <text>   add outline markdown as blocks below it, or above;
+                           nested bullets stay nested, plain text is one block
   delete                   remove it and everything under it
 
 Text may be "-" to read it from standard input, for a block of several lines.
@@ -91,6 +94,24 @@ func cmdBlock(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 		return exitOK
 	}
 
+	// `copy` reads: it prints the outline and writes nothing.
+	if op == "copy" {
+		text, err := svc.Fragment(a.Rel, a.Hash, []int{a.Offset})
+		if err != nil {
+			return fail(stderr, err)
+		}
+		if *asJSON {
+			if err := emit(stdout, struct {
+				Text string `json:"text"`
+			}{text}); err != nil {
+				return fail(stderr, err)
+			}
+			return exitOK
+		}
+		fmt.Fprint(stdout, text)
+		return exitOK
+	}
+
 	res, code := applyBlockOp(svc, a, op, opArgs, stderr)
 	if code != exitOK {
 		return code
@@ -129,10 +150,14 @@ func applyBlockOp(svc *app.Service, a app.Addr, op string, args []string, stderr
 		fmt.Fprintf(stderr, "tlog block: "+format+"\n", v...)
 		return nil, exitUsage
 	}
-	// -child may be written before the text of after and split.
-	asChild := false
+	// -child may be written before the text of after and split, -before
+	// before the text of paste.
+	asChild, before := false, false
 	if len(args) > 0 && (args[0] == "-child" || args[0] == "--child") {
 		asChild, args = true, args[1:]
+	}
+	if len(args) > 0 && (args[0] == "-before" || args[0] == "--before") {
+		before, args = true, args[1:]
 	}
 	// The text of an operation that takes one, with "-" standing for stdin.
 	// An operation that writes a block refuses to write an empty one by
@@ -204,6 +229,12 @@ func applyBlockOp(svc *app.Service, a app.Addr, op string, args []string, stderr
 			return usage("cmd needs the command's name — see: tlog commands")
 		}
 		res, err = command(svc, a, args[0], strings.Join(args[1:], " "))
+	case "paste":
+		t, ok := text("the outline to paste")
+		if !ok {
+			return nil, exitUsage
+		}
+		res, err = svc.PasteBlocks(a, t, before)
 	case "delete":
 		res, err = svc.DeleteBlock(a)
 	case "prop":

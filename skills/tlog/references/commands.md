@@ -67,6 +67,8 @@ multi-line block. With no text at all, `add` reads standard input too.
 | `prop <key> [value]` | set a `Key:: value` property; no value removes it | |
 | `cmd <name> [arg]` | any slash command by name: `todo`, `done`, `deadline`, `date`, `quote`, `code`, `table`, `page`, `tag`, `file`, `prop`, `alias` | what a command would insert goes at the end of the text |
 | `ref` | give the block a durable `^anchor` and print `[[Page#^anchor]]` | the only read-shaped op that writes; `-json` also gives the new `addr` |
+| `copy` | print it and everything under it as outline markdown | reads only; `-json` gives `{"text": …}` |
+| `paste [-before] <text>` | add outline markdown as blocks below it, or above it | nested bullets stay nested; plain text becomes one block; prints the first pasted block's address; an anchor the page already has is dropped from the copy |
 | `delete` | remove it and everything under it | |
 
 Every op prints the block's new address, or with `-json`:

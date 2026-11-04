@@ -223,6 +223,9 @@ func TestEveryBlockOperationIsReachable(t *testing.T) {
 		{"down"},
 		{"outdent"},
 		{"merge"},
+		{"paste", "- pasted\n  - under it"},
+		{"paste", "-before", "- above"},
+		{"copy"},
 		{"delete"},
 	} {
 		sub := filepath.Join(dir, op[0]+strings.Join(op[1:], "-"))
@@ -294,4 +297,25 @@ func read(t *testing.T, dir, sub string) string {
 	}
 	t.Fatalf("no markdown file in %s", sub)
 	return ""
+}
+
+func TestCopyAndPasteFromAScript(t *testing.T) {
+	dir := t.TempDir()
+	if code, _, e := runCLI(t, dir, "add", "one"); code != 0 {
+		t.Fatal(e)
+	}
+	addr := firstAddr(t, dir, "one")
+	code, out, errs := runCLI(t, dir, "block", addr, "paste", "- two\n  - under two")
+	if code != 0 {
+		t.Fatalf("%d %s", code, errs)
+	}
+	two := strings.TrimSpace(out) // a write prints the new address: the first block pasted
+	code, out, errs = runCLI(t, dir, "block", two, "copy")
+	if code != 0 || out != "- two\n  - under two\n" {
+		t.Fatalf("copy: %d %q %s", code, out, errs)
+	}
+	// A stale address is refused, as for any other write.
+	if code, _, _ := runCLI(t, dir, "block", addr, "paste", "- three"); code != exitStale {
+		t.Fatalf("a paste from a stale read: exit %d", code)
+	}
 }
