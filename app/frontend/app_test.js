@@ -48,6 +48,8 @@ eval(lift("function imageSrc"));
 eval(lift("function pastedImage"));
 eval(lift("function dataURLBody"));
 eval(lift("function fileHTML"));
+eval(lift("function isOutline"));
+eval(lift("function blockCount"));
 
 let failures = 0;
 function eq(label, got, want) {
@@ -460,6 +462,18 @@ eq("markdown file",
 eq("code file", fileHTML({ lang: "go", text: "x", tokens: [{ kind: "keyword", text: "func" }, { text: " <x>" }] }),
   "<span class=\"t-keyword\">func</span> &lt;x&gt;");
 eq("plain file", fileHTML({ lang: "txt", text: "a <b>" }), "a &lt;b&gt;");
+
+// --- selecting and pasting blocks -------------------------------------------
+
+eq("an outline of several lines is blocks", isOutline("- a\n  - b\n"), true);
+eq("indented bullets too", isOutline("  - a\n  - b"), true);
+eq("windows line ends", isOutline("- a\r\n- b"), true);
+eq("one bullet line is still text", isOutline("- just this"), false);
+eq("prose is text", isOutline("two lines\nof prose"), false);
+eq("nothing is text", isOutline(""), false);
+eq("a hyphenated word is not a bullet", isOutline("-dash\n- b"), false);
+eq("one block", blockCount("- a\n  - b\n"), "1 block");
+eq("two blocks", blockCount("- a\n- b\n"), "2 blocks");
 
 process.exit(failures ? 1 : 0);
 

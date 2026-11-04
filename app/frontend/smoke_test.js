@@ -592,6 +592,79 @@ function ok(label, cond, detail) {
   w.document.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   ok("esc puts it away", !shown("file"));
 
+  // --- selecting blocks ------------------------------------------------------
+  //
+  // esc in a block selects it; ⌘C, ⌘X, ⌘V and Tab act on the selection; what
+  // goes on the clipboard is what the core says the blocks are.
+  {
+    let clip = "";
+    w.runtime = { ClipboardSetText: async (t) => { clip = t; return true; },
+                  ClipboardGetText: async () => clip };
+    const calls = [];
+    const was = { CopyBlocks: API.CopyBlocks, CutBlocks: API.CutBlocks,
+                  PasteBlocks: API.PasteBlocks, ShiftBlocks: API.ShiftBlocks };
+    API.CopyBlocks = async (rel, hash, offs) => { calls.push(["copy", rel, offs]); return "- a\n- b\n"; };
+    API.CutBlocks = async (rel, hash, offs) => { calls.push(["cut", rel, offs]);
+      return { edit: { page: PAGE, offset: 0 }, text: "- cut\n" }; };
+    API.PasteBlocks = async (rel, off, hash, text, before) => { calls.push(["paste", rel, off, text]);
+      return { page: PAGE, offset: off }; };
+    API.ShiftBlocks = async (rel, hash, offs, outdent) => { calls.push(["shift", rel, offs, outdent]);
+      return { page: PAGE, offset: offs[0] }; };
+    const key = (init, target = w.document) => target.dispatchEvent(new w.KeyboardEvent("keydown",
+      { bubbles: true, cancelable: true, ...init }));
+    const settle = () => new Promise((r) => setTimeout(r, 80));
+    const texts = () => [...$("outline").querySelectorAll(".block > .text[data-offset]")];
+    const selected = () => [...$("outline").querySelectorAll(".block.selected > .text")]
+      .map((t) => Number(t.dataset.offset));
+
+    const first = texts()[0];
+    first.focus();
+    key({ key: "Escape" }, first);
+    await settle();
+    ok("esc in a block selects it", selected().join() === "0", selected().join());
+    key({ key: "ArrowDown", shiftKey: true });
+    ok("shift+↓ grows the selection", selected().join() === "0,70", selected().join());
+
+    key({ key: "c", metaKey: true });
+    await settle();
+    ok("⌘C copies the selected blocks", JSON.stringify(calls[0]) ===
+      JSON.stringify(["copy", PAGE.rel, [0, 70]]), JSON.stringify(calls));
+    ok("onto the system clipboard", clip === "- a\n- b\n", JSON.stringify(clip));
+
+    key({ key: "Tab" });
+    await settle();
+    ok("Tab indents the selection together",
+      JSON.stringify(calls[1]) === JSON.stringify(["shift", PAGE.rel, [0, 70], false]), JSON.stringify(calls));
+    ok("and it stays selected", selected().length === 2, selected().join());
+
+    key({ key: "x", metaKey: true });
+    await settle();
+    ok("⌘X cuts", calls[2] && calls[2][0] === "cut" && clip === "- cut\n", JSON.stringify(calls));
+    ok("which ends the selection", selected().length === 0);
+
+    key({ key: "Escape" }, texts()[2]);
+    await settle();
+    key({ key: "v", metaKey: true });
+    await settle();
+    ok("⌘V pastes below the selection", JSON.stringify(calls[3]) ===
+      JSON.stringify(["paste", PAGE.rel, Number(texts()[2].dataset.offset), "- cut\n"]), JSON.stringify(calls));
+
+    // An outline pasted into a block's text goes in as blocks.
+    const t = texts()[0];
+    t.focus();
+    const ev = new w.Event("paste", { bubbles: true, cancelable: true });
+    ev.clipboardData = { getData: () => "- one\n  - two", items: [] };
+    t.dispatchEvent(ev);
+    await settle();
+    ok("an outline pasted into text becomes blocks", calls.some((c) => c[0] === "paste" && c[3] === "- one\n  - two"),
+      JSON.stringify(calls));
+    ok("and is not typed in as text", ev.defaultPrevented);
+
+    key({ key: "Escape" });
+    Object.assign(API, was);
+    w.runtime = undefined;
+  }
+
   console.log(failures === 0 ? "frontend smoke: all pass" : `frontend smoke: ${failures} FAILURES`);
   process.exit(failures ? 1 : 0);
 })().catch((e) => {

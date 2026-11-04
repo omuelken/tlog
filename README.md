@@ -199,7 +199,14 @@ Keys, with `⌘/` for the list:
 | `⌘⇧M` | everything tlog has said |
 | `⌘⇧⏎` | a new block above this one |
 | `⌘⌫` | delete the block and what is under it |
-| `Esc` | close whatever is open |
+| `Esc` | close whatever is open; in a block, select the block |
+| `⇧`-click / `⇧↑↓` | select blocks, or grow the selection (`↑↓` at the edge of a block) |
+| `⌘C` `⌘X` `⌘V` | copy, cut, paste the selected blocks — outline markdown, the same as the outliner |
+| `Tab` `⇧Tab` `⌫` | indent, outdent, delete the selected blocks |
+
+An outline pasted into a block's text — copied blocks, or bullets from nvim —
+goes in as blocks below it, keeping its nesting. One line, or prose, pastes as
+text.
 
 Click a bullet to fold what is under it. A bullet does nothing else: a block
 becomes a task when you say `/todo` or give it a `/deadline`, never because you

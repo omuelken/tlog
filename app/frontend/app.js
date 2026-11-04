@@ -132,6 +132,12 @@ function applied(edit, caret = null) {
 // takeFocus puts the caret where the last edit asked for it.
 function takeFocus() {
   if (focusOffset === null) return;
+  // While blocks are selected no block is being written in: a save that
+  // finishes after esc must not pull the caret back into the block.
+  if (blockSel) {
+    focusOffset = focusCaret = focusRel = null;
+    return;
+  }
   const el = [...document.querySelectorAll("#outline .text[data-offset]")].find(
     (t) => Number(t.dataset.offset) === focusOffset && (!focusRel || t.dataset.rel === focusRel)
   );
@@ -582,6 +588,18 @@ function renderBlocks(out, pv) {
     // the text. What is stored still has it, and focusing shows that.
     text.innerHTML = decorate(b.task ? b.body : b.text, b.fences, b.embeds) || "<br>";
     wireBlock(text, b, pv);
+    // Shift-click selects blocks rather than putting a caret in this one: from
+    // the block being written, or the selection's start, to this one.
+    text.addEventListener("mousedown", (e) => {
+      if (!e.shiftKey) return;
+      e.preventDefault();
+      const active = document.activeElement;
+      let anchor = b.offset;
+      if (blockSel && blockSel.rel === rel) anchor = blockSel.anchor;
+      else if (active && active.classList.contains("text") && active.dataset.rel === rel)
+        anchor = Number(active.dataset.offset);
+      selectBlocks(rel, anchor, b.offset);
+    });
     row.appendChild(text);
 
     out.appendChild(row);
@@ -616,6 +634,7 @@ function renderBlocks(out, pv) {
       out.appendChild(pr);
     });
   });
+  markSelection();
 }
 
 // --- the journals page ------------------------------------------------------
@@ -987,6 +1006,7 @@ function wireBlock(el, b, pv) {
   // While a block has focus it shows raw text: what you type is what is stored.
   el.addEventListener("focus", () => {
     el.textContent = el.dataset.raw;
+    if (blockSel) clearSelection(); // writing in a block is not selecting blocks
   });
 
   el.addEventListener("blur", async () => {
@@ -1005,6 +1025,19 @@ function wireBlock(el, b, pv) {
   // A picture on the clipboard — a screenshot, most of the time — is copied into the
   // notes' assets/ and its link is typed at the caret. Text pastes as text.
   el.addEventListener("paste", async (e) => {
+    // An outline — copied blocks, or bullets from anywhere — goes in as blocks
+    // below this one, keeping its nesting, rather than as text inside it.
+    const words = e.clipboardData && e.clipboardData.getData("text/plain");
+    if (isOutline(words)) {
+      e.preventDefault();
+      const text = raw(el);
+      el.dataset.raw = text;
+      const saved = await call(() => api().SetText(rel, b.offset, cur().hash, text));
+      if (!saved) return;
+      applied(await call(() => api().PasteBlocks(saved.page.rel, saved.offset, saved.page.hash, words, false)));
+      say("Pasted " + blockCount(words));
+      return;
+    }
     const file = pastedImage(e.clipboardData);
     if (!file) return;
     e.preventDefault();
@@ -1152,9 +1185,203 @@ function wireBlock(el, b, pv) {
 
     if (e.key === "Escape") {
       hideCompletion();
+      e.preventDefault();
+      // As in Logseq: esc stops writing and selects the block, ready for
+      // ⌘C, ⌘X, Tab or another esc to let go.
       el.blur();
+      selectBlocks(rel, b.offset, b.offset);
+      return;
+    }
+
+    // Shift and an arrow at the edge of a block select it and the next one.
+    if (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey &&
+        ((e.key === "ArrowUp" && caretAtStart(el)) || (e.key === "ArrowDown" && caretAtEnd(el)))) {
+      const rows = blockTexts(rel);
+      const i = rows.findIndex((t) => Number(t.dataset.offset) === b.offset);
+      const j = i + (e.key === "ArrowUp" ? -1 : 1);
+      if (i < 0 || j < 0 || j >= rows.length) return;
+      e.preventDefault();
+      el.blur();
+      selectBlocks(rel, b.offset, Number(rows[j].dataset.offset));
     }
   });
+}
+
+function caretAtEnd(el) {
+  return caretIndex(el) >= raw(el).length;
+}
+
+// --- selecting blocks -------------------------------------------------------
+//
+// esc in a block, shift-click or shift+arrow at its edge selects whole blocks.
+// ⌘C copies them, ⌘X cuts, ⌘V pastes below, Tab and shift+Tab indent and
+// outdent them together, ⌫ deletes, ↑↓ move the selection and shift+↑↓ grow
+// it, Enter writes in the block, esc lets go. A block always comes with
+// everything under it, and what goes on the clipboard is outline markdown, the
+// same as the outliner copies — so blocks move between the two, and into any
+// other program, as an outline. A selection stays within one file: on the
+// journals page it stops at the edge of its day, as every edit does.
+
+let blockSel = null; // { rel, anchor, head }: offsets where it starts and where it has got to
+
+// blockTexts are the text elements of one file's blocks, top to bottom.
+function blockTexts(rel) {
+  return [...document.querySelectorAll("#outline .block > .text[data-offset]")].filter(
+    (t) => t.dataset.rel === rel
+  );
+}
+
+function selectedTexts() {
+  if (!blockSel) return [];
+  const rows = blockTexts(blockSel.rel);
+  const a = rows.findIndex((t) => Number(t.dataset.offset) === blockSel.anchor);
+  const h = rows.findIndex((t) => Number(t.dataset.offset) === blockSel.head);
+  if (a < 0 || h < 0) return [];
+  return rows.slice(Math.min(a, h), Math.max(a, h) + 1);
+}
+
+function selectBlocks(rel, anchor, head) {
+  blockSel = { rel, anchor, head };
+  markSelection();
+}
+
+function clearSelection() {
+  blockSel = null;
+  markSelection();
+}
+
+function markSelection() {
+  document.querySelectorAll("#outline .block.selected").forEach((r) => r.classList.remove("selected"));
+  selectedTexts().forEach((t) => t.parentElement.classList.add("selected"));
+}
+
+function selectedOffsets() {
+  return selectedTexts().map((t) => Number(t.dataset.offset));
+}
+
+// The clipboard is the system's, through Wails; a page without it, as in the
+// tests, falls back to the browser's.
+async function writeClipboard(text) {
+  if (window.runtime && window.runtime.ClipboardSetText) return window.runtime.ClipboardSetText(text);
+  if (navigator.clipboard) return navigator.clipboard.writeText(text);
+}
+
+async function readClipboard() {
+  if (window.runtime && window.runtime.ClipboardGetText) return window.runtime.ClipboardGetText();
+  if (navigator.clipboard) return navigator.clipboard.readText();
+  return "";
+}
+
+// blockCount says how much was copied, for the notice.
+function blockCount(text) {
+  const n = text.split("\n").filter((l) => l === "-" || l.startsWith("- ")).length;
+  return n <= 1 ? "1 block" : `${n} blocks`;
+}
+
+// isOutline says whether pasted text is blocks rather than words: more than
+// one line, the first that says anything a bullet. One line starting "- " is
+// left as text — that may well be what was meant.
+function isOutline(text) {
+  const t = (text || "").replace(/\r\n/g, "\n").trim();
+  if (!t.includes("\n")) return false;
+  const first = t.split("\n").find((l) => l.trim() !== "");
+  return /^\s*-(\s|$)/.test(first);
+}
+
+async function copySelection(cut) {
+  const s = blockSel;
+  const pv = s && viewOf(s.rel);
+  const offs = selectedOffsets();
+  if (!pv || !offs.length) return;
+  if (!cut) {
+    const text = await call(() => api().CopyBlocks(s.rel, pv.hash, offs));
+    if (text == null) return;
+    await writeClipboard(text);
+    say("Copied " + blockCount(text));
+    return;
+  }
+  const r = await call(() => api().CutBlocks(s.rel, pv.hash, offs));
+  if (!r) return;
+  await writeClipboard(r.text);
+  clearSelection();
+  applied(r.edit);
+  say("Cut " + blockCount(r.text) + " — ⌘V puts it back");
+}
+
+async function deleteSelection() {
+  const s = blockSel;
+  const pv = s && viewOf(s.rel);
+  const offs = selectedOffsets();
+  if (!pv || !offs.length) return;
+  const r = await call(() => api().CutBlocks(s.rel, pv.hash, offs));
+  if (!r) return;
+  clearSelection();
+  applied(r.edit);
+  say("Deleted " + blockCount(r.text) + " — git has the previous version");
+}
+
+// pasteBlocks puts text in as blocks below a block: the last one selected.
+async function pasteBlocks(rel, offset, text) {
+  const pv = viewOf(rel);
+  if (!pv || !text || !text.trim()) return;
+  applied(await call(() => api().PasteBlocks(rel, offset, pv.hash, text, false)));
+}
+
+async function shiftSelection(outdent) {
+  const s = blockSel;
+  const pv = s && viewOf(s.rel);
+  const offs = selectedOffsets();
+  if (!pv || !offs.length) return;
+  const n = selectedTexts().length;
+  const edit = await call(() => api().ShiftBlocks(s.rel, pv.hash, offs, outdent));
+  if (!edit) return;
+  applied(edit);
+  // The selection stays on the same blocks, so Tab can be pressed again. The
+  // core says where the first one went; the rest follow it on the page.
+  const rows = blockTexts(s.rel);
+  const i = rows.findIndex((t) => Number(t.dataset.offset) === edit.offset);
+  if (i >= 0) selectBlocks(s.rel, edit.offset, Number(rows[Math.min(i + n - 1, rows.length - 1)].dataset.offset));
+}
+
+// moveSelection moves the head one block up or down; grow keeps the anchor.
+function moveSelection(delta, grow) {
+  const rows = blockTexts(blockSel.rel);
+  const h = rows.findIndex((t) => Number(t.dataset.offset) === blockSel.head);
+  const next = rows[Math.max(0, Math.min(rows.length - 1, h + delta))];
+  if (!next) return;
+  const off = Number(next.dataset.offset);
+  selectBlocks(blockSel.rel, grow ? blockSel.anchor : off, off);
+  const row = next.parentElement;
+  if (row.scrollIntoView) row.scrollIntoView({ block: "nearest" });
+}
+
+// selectionKey handles a key while blocks are selected, reporting whether it
+// did.
+function selectionKey(e) {
+  const mod = e.metaKey || e.ctrlKey;
+  const k = e.key.toLowerCase();
+  if (e.key === "Escape") return clearSelection(), true;
+  if (mod && k === "c") return copySelection(false), true;
+  if (mod && k === "x") return copySelection(true), true;
+  if (mod && k === "v") {
+    const offs = selectedOffsets();
+    const s = blockSel;
+    readClipboard().then((text) => pasteBlocks(s.rel, offs[offs.length - 1], text));
+    clearSelection();
+    return true;
+  }
+  if (e.key === "Tab") return shiftSelection(e.shiftKey), true;
+  if (e.key === "Backspace" || e.key === "Delete") return deleteSelection(), true;
+  if (e.key === "ArrowUp" || e.key === "ArrowDown")
+    return moveSelection(e.key === "ArrowUp" ? -1 : 1, e.shiftKey), true;
+  if (e.key === "Enter") {
+    const t = selectedTexts();
+    const el = t[t.length - 1];
+    clearSelection();
+    if (el) placeCaretAtEnd(el);
+    return true;
+  }
+  return false;
 }
 
 // --- completion -------------------------------------------------------------
@@ -2063,6 +2290,7 @@ $("sidebar").addEventListener("click", (e) => {
 });
 document.addEventListener("mousedown", (e) => {
   if (sidebarOpen() && !e.target.closest("#sidebar, #sidebartoggle")) closeSidebar();
+  if (blockSel && !e.shiftKey) clearSelection();
 });
 // Widening the window past the line puts it back beside the page, where an
 // open visit means nothing.
@@ -2088,6 +2316,10 @@ document.addEventListener("keydown", (e) => {
   if (!isCycleKey(e) && !MODIFIERS.has(e.key)) settleRecent();
   // A block that took the key — a completion list moving with ctrl+n — has it.
   if (e.defaultPrevented) return;
+  if (blockSel && selectionKey(e)) {
+    e.preventDefault();
+    return;
+  }
   // Escape backs out of whatever is covering the page, innermost first.
   if (e.key === "Escape") {
     if (!$("palette").hidden) return void ($("palette").hidden = true);
@@ -2279,7 +2511,10 @@ function toggleHelp() {
   });
   $("helplist").innerHTML =
     "<table>" + rows.join("") +
-    `<tr><td class="chord">Esc</td><td>Close what is open</td></tr>` +
+    `<tr><td class="chord">Esc</td><td>Close what is open; in a block, select it</td></tr>` +
+    `<tr><td class="chord">${mac ? "⇧" : "Shift+"}click ${mac ? "⇧" : "Shift+"}↑↓</td><td>Select blocks, or grow the selection</td></tr>` +
+    `<tr><td class="chord">${mac ? "⌘C ⌘X ⌘V" : "Ctrl+C X V"}</td><td>Copy, cut, paste the selected blocks, as an outline</td></tr>` +
+    `<tr><td class="chord">Tab ${mac ? "⇧" : "Shift+"}Tab ⌫</td><td>Indent, outdent, delete the selected blocks</td></tr>` +
     `<tr><td class="chord">Tab</td><td>Indent the block being edited</td></tr>` +
     `<tr><td class="chord">${mac ? "⌥" : "Alt"}↑↓</td><td>Move the block</td></tr>` +
     `<tr><td class="chord">${mac ? "⌘⇧⏎" : "Ctrl+Shift+Enter"}</td><td>New block above</td></tr>` +
