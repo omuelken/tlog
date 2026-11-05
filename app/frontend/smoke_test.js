@@ -131,7 +131,7 @@ const API = {
   Move: async () => ({ page: PAGE, offset: 0 }),
   MergeIntoPrevious: async () => ({ page: PAGE, offset: 0 }),
   OpenRel: async (rel) => (rel === "pages/Timetable.md" ? OTHER : PAGE),
-  OpenPage: async () => OTHER,
+  OpenPage: async (name) => { opened.push("OpenPage " + name); return OTHER; },
   Journal: async () => PAGE,
   Search: async () => [{ addr: "a:0@b", rel: "a", page: "Ada Lovelace", offset: 0, hash: "b", text: "a hit" }],
   Due: async () => [{ addr: "a:0@b", rel: "a", page: "Ada Lovelace", offset: 0, hash: "b",
@@ -457,6 +457,19 @@ function ok(label, cond, detail) {
   await new Promise((r) => setTimeout(r, 100));
   ok("choosing goes there", $("title").textContent === "Timetable", $("title").textContent);
   ok("and the palette closes", $("palette").hidden === true);
+
+  // A name nothing answers to makes the page, as : does in the outliner.
+  await w.eval("openPalette()");
+  await new Promise((r) => setTimeout(r, 80));
+  $("palettequery").value = "Brand new page";
+  await w.eval("refreshPalette()");
+  await new Promise((r) => setTimeout(r, 80));
+  ok("an unknown name says enter makes it",
+    $("palettelist").textContent.includes("Enter makes the page"), $("palettelist").textContent);
+  await w.eval("choosePlace()");
+  await new Promise((r) => setTimeout(r, 100));
+  ok("and enter makes it", opened.includes("OpenPage Brand new page") && $("palette").hidden === true,
+    JSON.stringify(opened));
 
   // --- the keyboard -------------------------------------------------------
   await w.eval("toggleHelp()");

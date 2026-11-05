@@ -191,7 +191,7 @@ way `F1` does in the outliner:
 
 | | |
 |---|---|
-| `⌘P` | go to a journal, page or tag |
+| `⌘P` | go to a journal, page or tag; a name that does not exist yet makes the page |
 | `⌘K` `⌘F` | search inside blocks |
 | `⌘T` | today |
 | `⌘J` | journals: every day, newest first, editable |

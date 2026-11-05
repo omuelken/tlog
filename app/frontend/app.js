@@ -2581,7 +2581,9 @@ function drawPalette() {
   if (places.length === 0) {
     const li = document.createElement("li");
     li.className = "hint";
-    li.textContent = "Nothing by that name";
+    li.textContent = $("palettequery").value.trim()
+      ? "Nothing by that name — Enter makes the page"
+      : "Nothing by that name";
     list.appendChild(li);
     return;
   }
@@ -2601,11 +2603,14 @@ function drawPalette() {
 }
 
 // choosePlace opens what is selected. A tag may have no file of its own, so it
-// is opened by name — which is what creates it, and only then.
+// is opened by name — which is what creates it, and only then. A name nothing
+// answers to makes that page, as : does in the outliner and as following a
+// [[link]] to it for the first time does.
 async function choosePlace() {
   const p = places[placeSel];
+  const q = $("palettequery").value.trim();
   $("palette").hidden = true;
-  if (!p) return;
+  if (!p) return q ? open_(q) : undefined;
   if (p.kind === "tag" || !p.rel) return open_(p.name);
   openRel(p.rel);
 }
