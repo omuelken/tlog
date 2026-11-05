@@ -136,7 +136,12 @@ character silently corrupts what the reader sees.
   stubbed API. Install jsdom outside the repo and run it with `NODE_PATH`
   pointing there (README, Development); never commit a `node_modules`.
 - jsdom has no layout, no `innerText` and no `contentEditable` property; the
-  smoke test shims the last two. Code that asks the layout — `getClientRects`,
+  smoke test shims the last two, and gives `Range` an empty box so a pop-up
+  placed at the caret can be drawn.
+- The smoke test loads `app.js` with `w.eval`, so the page's top-level `let`s
+  (`completion`, `page`) are not reachable from the test: assigning one makes
+  a new global the page never reads. Drive the page through its functions
+  and real key events instead. Code that asks the layout — `getClientRects`,
   `caretRangeFromPoint` — must fall back to the text when there is no answer,
   or it cannot be tested and breaks in a collapsed range too.
 - A pop-up over the page (help, agenda) takes the keyboard in the capture

@@ -398,6 +398,14 @@ feature and left the next one homeless.
 slash. The menu and the text-cutting both live in `internal/app`, so the two
 adapters cannot cut differently.
 
+**A bare slash is not a request.** `/` alone shows every command, and `enter`
+after it used to run the first row, so "a /" at the end of a line became a
+task, and "a / b" did too: an empty name with an argument after it kept the
+menu open. With nothing typed after the slash, `enter` and `tab` now belong to
+the block and the slash stays; a slash followed by a space is never a command.
+A row chosen with the arrows is a choice and still runs. The menu still opens
+on a bare slash, because seeing what there is was the point of it.
+
 **A deadline is a property, not an inline date link.** `[[2026-09-25]]` reads
 better and would give the day's journal its backlinks for free, but
 
@@ -818,6 +826,14 @@ the two places you go most.
 **The order holds still while cycling.** If every step moved the page you land
 on to the front, the next step could only go back to where you came from — two
 pages, not five. Like alt-tab, the list catches up once you do something else.
+
+**Going to a page that is not there makes it, in both adapters.** The
+outliner's `:` always did; the window's `⌘P` said "Nothing by that name" and
+`enter` did nothing, so a page could only be made there by writing a `[[link]]`
+and clicking it. Now `enter` on an unknown name opens it by name, the same
+`OpenPage` a first link follows. There is no separate "new page" command:
+a page is a file that exists because something went to it, which is what
+following a link has always meant here.
 
 ## Copy, cut and paste
 

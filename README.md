@@ -318,6 +318,13 @@ inlining a subtree into the middle of a sentence would be nonsense.
 carries over. The command is typed and then disappears: what stays in the file
 is its effect, never a slash.
 
+A slash can still be just a slash. Inside a word (`und/oder`, a path, a URL) it
+never opens the menu; followed by a space (`a / b`) it closes it. A bare `/`
+shows the whole menu, but `enter` and `tab` after it do what they always do —
+start the next block, indent — and the slash stays in the text. A row chosen
+with `↑ ↓` still runs, and so does anything typed after the slash: `/to` and
+`enter` is `/todo`.
+
 | | |
 |---|---|
 | `/todo` `/done` | a checkbox, open or ticked |
