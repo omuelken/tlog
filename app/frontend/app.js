@@ -1569,6 +1569,9 @@ function slashAt(before) {
   const rest = before.slice(i + 1);
   if (/[\n/\\]/.test(rest)) return null;
   const sp = rest.indexOf(" ");
+  // A space straight after the slash means it was meant as a character:
+  // "a / b" is a sentence, not a command with no name.
+  if (sp === 0) return null;
   return {
     start: i,
     name: sp < 0 ? rest : rest.slice(0, sp),
@@ -1660,7 +1663,9 @@ async function updateCompletion(el) {
         date = await call(() => api().DatePreview(slash.arg));
         if (date && !date.iso) date = null;
       }
-      completion = { kind: "cmd", cmds, sel, el, ...slash, date };
+      // moved survives a redraw: a row chosen with the arrows stays chosen.
+      const moved = !!(completion && completion.cmds && completion.moved && completion.name === slash.name);
+      completion = { kind: "cmd", cmds, sel, el, ...slash, date, moved };
       if (date) completion.cal = await call(() => api().Month(date.iso));
       return drawCompletion();
     }
@@ -1936,11 +1941,18 @@ function handleCompletionKey(e, el) {
       const n = (completion.files || completion.cmds).length;
       const d = key === "ArrowDown" ? 1 : -1;
       completion.sel = Math.max(0, Math.min(completion.sel + d, n - 1));
+      completion.moved = true;
       if (completion.files) drawCompletion();
       else updateCompletion(el);
       return true;
     }
     if (key === "Enter" || key === "Tab") {
+      if (completion.name === "" && !completion.moved) {
+        // A bare slash: nothing was asked for, so the key does what it would
+        // have done and the slash stays as text.
+        hideCompletion();
+        return false;
+      }
       e.preventDefault();
       runCommand();
       return true;

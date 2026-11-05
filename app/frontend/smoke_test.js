@@ -108,6 +108,7 @@ const DAY_RELS = [TODAY.rel, YESTERDAY.rel];
 for (let d = 31; DAY_RELS.length < 20; d--) DAY_RELS.push(`journals/2026-10-${d}.md`);
 
 const opened = [];
+const ran = []; // slash commands the window asked the core to run
 const visited = [];
 const dayCalls = [];
 let recentList = [
@@ -141,7 +142,9 @@ const API = {
     { key: "git.autocommit", value: "true", kind: "bool", hint: "commit as you write", source: "config" },
   ],
   ConfigPath: async () => "~/.config/tlog/config.toml",
-  Commands: async () => [],
+  // Only a bare slash finds anything, so no other test opens the menu.
+  Commands: async (name) => (name === "" ? [{ name: "todo", title: "TODO", hint: "Task, open" }] : []),
+  RunCommand: async (...args) => { ran.push(args[3]); return null; },
   CompletePages: async () => [],
   CompleteTags: async () => [],
   Blocks: async () => [],
@@ -233,6 +236,10 @@ function ok(label, cond, detail) {
       this.setAttribute("contenteditable", v);
     },
   });
+  // And no layout: a range has no box, so a pop-up placed at the caret (the
+  // slash menu) has nowhere to go. A zero box puts it in the corner.
+  dom.window.Range.prototype.getBoundingClientRect = () =>
+    ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0 });
 
   const w = dom.window;
   w.go = { main: { API } };
@@ -500,6 +507,43 @@ function ok(label, cond, detail) {
     send({ key: "Escape" });
     ok("esc closes it and the caret is where it was", $("help").hidden === true &&
       w.document.activeElement === block && w.eval("caretIndex(document.activeElement)") === 2);
+  }
+
+  // --- a slash typed as a character -----------------------------------------
+  //
+  // A bare slash shows the menu, but enter after it used to run the first row
+  // — /todo — and turn "a /" into a task. Nothing was asked for, so the key is
+  // the block's; a row chosen with the arrows is still a choice.
+  {
+    const block = $("outline").querySelector(".block > .text[data-offset]");
+    const before = block.textContent;
+    const send = (init) => {
+      const ev = new w.KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+      block.dispatchEvent(ev);
+      return ev;
+    };
+    const tick = () => new Promise((r) => setTimeout(r, 20));
+    block.focus();
+    block.textContent = "a /";
+    w.__el = block;
+    w.eval("placeCaretAt(__el, 3)");
+    await w.eval("updateCompletion(__el)");
+    ok("a bare slash shows the menu", $("complete").hidden === false);
+    send({ key: "Enter" }); // the block's own enter: it splits the block
+    await tick();
+    ok("enter after a bare slash is the block's, not the menu's",
+      ran.length === 0 && $("complete").hidden === true, JSON.stringify(ran));
+
+    block.textContent = "a /";
+    w.eval("placeCaretAt(__el, 3)");
+    await w.eval("updateCompletion(__el)");
+    send({ key: "ArrowDown" });
+    await tick();
+    send({ key: "Enter" });
+    await tick();
+    ok("a row chosen with the arrows still runs on enter", ran[0] === "todo", JSON.stringify(ran));
+    w.eval("hideCompletion()");
+    block.textContent = before;
   }
 
   // --- what the window says ------------------------------------------------

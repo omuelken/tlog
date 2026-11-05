@@ -36,6 +36,10 @@ type completion struct {
 	mentions []tapp.Mention
 	arg      string
 	start    int // rune offset where the "/" sits
+	// name is what has been typed after the slash. While it is empty the menu
+	// only shows what there is: enter and tab stay ordinary keys unless a row
+	// was chosen with the arrows, so a slash typed as text stays text.
+	name string
 	// closing is appended when a candidate is accepted: page names finish the
 	// link, tags do not, because you may want to add another.
 	closing string
@@ -285,7 +289,7 @@ func (m *Model) slashCompletion() bool {
 			}
 			m.comp = &completion{
 				active: true, items: dateLabels(choices), cmds: cmds, dates: choices,
-				arg: arg, start: start, sel: sel,
+				arg: arg, start: start, sel: sel, name: name,
 			}
 			return true
 		}
@@ -306,7 +310,7 @@ func (m *Model) slashCompletion() bool {
 			}
 			m.comp = &completion{
 				active: true, items: items, cmds: cmds, files: found,
-				arg: arg, start: start, sel: sel,
+				arg: arg, start: start, sel: sel, name: name,
 			}
 			return true
 		}
@@ -315,7 +319,7 @@ func (m *Model) slashCompletion() bool {
 	if m.comp != nil && m.comp.cmds != nil && m.comp.sel < len(items) {
 		sel = m.comp.sel
 	}
-	m.comp = &completion{active: true, items: items, cmds: cmds, arg: arg, start: start, sel: sel}
+	m.comp = &completion{active: true, items: items, cmds: cmds, arg: arg, start: start, sel: sel, name: name}
 	return true
 }
 
@@ -346,7 +350,9 @@ func slashAt(before string) (start int, name, arg string, ok bool) {
 		return 0, "", "", false
 	}
 	name, arg, _ = strings.Cut(rest, " ")
-	if name == "" && arg == "" && rest != "" {
+	// A space straight after the slash means it was meant as a character:
+	// "a / b" is a sentence, not a command with no name.
+	if name == "" && rest != "" {
 		return 0, "", "", false
 	}
 	return i, name, arg, true
@@ -393,6 +399,12 @@ func (m *Model) completionKey(k string) (bool, tea.Cmd) {
 		}
 		return true, nil
 	case "tab", "enter":
+		if m.comp.cmds != nil && m.comp.name == "" && !m.comp.moved {
+			// A bare slash: nothing was asked for, so the key does what it
+			// would have done and the slash stays as text.
+			m.comp = nil
+			return false, nil
+		}
 		switch {
 		case m.comp.cmds != nil:
 			m.runCommand()

@@ -282,6 +282,9 @@ eq("everything after the first space is the argument", slashAt("x /deadline näc
 eq("a bare slash offers the whole menu", slashAt("x /"),
   { start: 2, name: "", arg: "" });
 
+eq("a slash before a space is a character", String(slashAt("a / b")), "null");
+eq("a slash before a space, nothing after", String(slashAt("a / ")), "null");
+
 eq("a slash inside a word is not a command", String(slashAt("und/oder")), "null");
 eq("a url is not a command", String(slashAt("siehe http://x.test/pfad")), "null");
 eq("a path is not a command", String(slashAt("~/src/tlog")), "null");

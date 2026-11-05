@@ -798,6 +798,47 @@ func TestAnUnknownSlashWordIsLeftAlone(t *testing.T) {
 	}
 }
 
+// A slash with nothing after it may be meant as a character: enter starts the
+// next block and the slash stays, rather than running the first command.
+func TestABareSlashStaysText(t *testing.T) {
+	m := newModel(t)
+	typeText(t, m, "a /")
+	if m.comp == nil || m.comp.cmds == nil {
+		t.Fatal("a bare slash should still show the menu")
+	}
+	send(t, m, k(tea.KeyEnter))
+	send(t, m, k(tea.KeyEsc))
+	if got := onDisk(t, m); !strings.HasPrefix(got, "- a /\n") || strings.Contains(got, "[ ]") {
+		t.Fatalf("enter after a bare slash ran a command: %q", got)
+	}
+}
+
+func TestASpacedSlashIsText(t *testing.T) {
+	m := newModel(t)
+	typeText(t, m, "a / b")
+	if m.comp != nil && m.comp.cmds != nil {
+		t.Fatal("a slash followed by a space held the menu open")
+	}
+	send(t, m, k(tea.KeyEnter))
+	send(t, m, k(tea.KeyEsc))
+	if got := onDisk(t, m); !strings.HasPrefix(got, "- a / b\n") || strings.Contains(got, "[ ]") {
+		t.Fatalf("a / b was not kept as text: %q", got)
+	}
+}
+
+// Choosing a row with the arrows is asking for it, even with nothing typed.
+func TestABareSlashRunsAChosenRow(t *testing.T) {
+	m := newModel(t)
+	typeText(t, m, "a /")
+	send(t, m, k(tea.KeyDown))
+	send(t, m, k(tea.KeyUp))
+	send(t, m, k(tea.KeyEnter))
+	send(t, m, k(tea.KeyEsc))
+	if got := onDisk(t, m); !strings.Contains(got, "[ ] a") {
+		t.Fatalf("the chosen command did not run: %q", got)
+	}
+}
+
 func TestSlashMenuCanBeDismissed(t *testing.T) {
 	m := newModel(t)
 	typeText(t, m, "x /todo")
