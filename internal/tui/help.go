@@ -67,7 +67,7 @@ func (m *Model) helpParts() []helpPart {
 		key("v", "select text inside the block: h l w b e 0 $ move, y copies, d cuts, c changes, p pastes, "+
 			"x takes one character, i writes; esc ends the selection, esc again comes back"),
 		key("z  h l", "fold and unfold"),
-		key("a", "the agenda: everything with a deadline"),
+		key("a", "the agenda: open tasks, deadlines first, then those without a date"),
 		key("Y", "copy a link in the block — the address, a file's full path, or [[the page]]"),
 		key("u  U", "undo, redo — a change on another page takes you there"),
 		key("q", "quit"),
