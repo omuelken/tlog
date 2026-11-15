@@ -653,10 +653,14 @@ func (m *Model) moveKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 		m.goTo(app.JournalsRel)
 	case "b", "backspace":
 		m.back()
-	case "g", "o":
+	case "g":
 		if !m.activateRow() {
 			m.followLink()
 		}
+	case "o":
+		m.openBlock(false)
+	case "O":
+		m.openBlock(true)
 	case "[":
 		m.shiftDay(-1)
 	case "]":
@@ -1390,6 +1394,28 @@ func (m *Model) leave() {
 		m.graphDirty = false
 		m.refresh()
 		m.buildRows()
+	}
+}
+
+// openBlock is vim's o and O: an empty block below or above the one under the
+// cursor, and writing in it. Below is the row drawn below, so a block whose
+// children show gets a first child, as enter at its end would; a folded one
+// gets a sibling after everything it hides.
+func (m *Model) openBlock(above bool) {
+	b := m.current()
+	if b == nil || !m.ensureOnDisk(b) {
+		return // a heading or a reference: not a block of this page
+	}
+	a := m.addrOf(b)
+	var ok bool
+	if above {
+		ok = m.apply(m.svc.InsertBefore(a, ""))
+	} else {
+		ok = m.apply(m.svc.InsertAfter(a, "", m.hasVisibleChildren(b)))
+	}
+	if ok {
+		m.mode = modeOutline
+		m.attach(0)
 	}
 }
 

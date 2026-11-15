@@ -87,7 +87,8 @@ around with single letters; `enter` picks it back up.
 | `t` / `[` `]` | today · previous, next day |
 | `J` | journals: every day, newest first, each still its own file |
 | `b` | back to where you came from |
-| `g` / `o` | follow a `[[link]]`, show a linked text file, or open any other link or file with `xdg-open`; a folder opens a terminal tab |
+| `g` | follow a `[[link]]`, show a linked text file, or open any other link or file with `xdg-open`; a folder opens a terminal tab |
+| `o` / `O` | new block below · above, and write in it — below a block whose children show is its first child |
 | `x` | toggle the task checkbox |
 | `dd` / `yy` | cut · copy the block and everything in it |
 | `V` | select blocks: `j k` grow it, `y` copy, `d` cut, `>` `<` indent, `esc` stop |
