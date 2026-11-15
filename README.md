@@ -24,6 +24,10 @@ is one `git checkout` away from being undone. Add a remote and
 Three ways in, one core: a terminal outliner, a CLI, and a desktop app that
 renders in the system WebView and weighs about 8 MB.
 
+**New here?** The [documentation](https://gh.tschieber.de/tlog/) starts with a
+twenty-minute tutorial and explains the ideas one at a time. Its source is in
+`docs/`; `just docs-serve` previews it.
+
 ## Install
 
 ```sh
