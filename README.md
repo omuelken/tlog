@@ -391,8 +391,8 @@ latest deadline. The order is the core's, so the outliner, the app and
 
 ## Settings
 
-`~/.config/tlog/config.toml`, written the first time something changes. `,` in
-the outliner opens the settings, `⌘,` in the app, and `tlog config` prints them
+`~/.config/tlog/config.toml`, written the first time something changes. In the
+outliner, `:` and then `settings` opens them, `⌘,` in the app, and `tlog config` prints them
 with where each one came from.
 
 ```sh
