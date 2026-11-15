@@ -386,6 +386,17 @@ bundle. The invariant is that tokens must reassemble into exactly the input, for
 every language and for half-pasted code — notes are full of half-pasted code,
 and a highlighter that drops a character silently corrupts what you read.
 
+**An attached markdown file is drawn the way glow draws it, by tlog's own
+renderer.** glow's look was the model (`internal/tui/mdview.go`): reflowed
+paragraphs, bullets with hanging indents, quote bars, aligned tables, styled
+emphasis, links as their label plus a faded address. glamour, the library glow
+is built on, was not used: it brings goldmark and chroma (the size argument
+above) and its styles are 256-colour and RGB, which the sixteen-colour rule
+forbids. The renderer is a reader's view, not CommonMark: what it does not
+recognise is drawn as the characters it is, never dropped, for the same reason
+the highlighter never drops one. It lives in the TUI because it only decides how
+a file looks; `LinkedText` still hands every caller the text as written.
+
 ## Commands, tasks and deadlines
 
 **Slash commands, named after Logseq's.** One extensible surface rather than a
@@ -415,6 +426,12 @@ is a past date that is emphatically not a deadline, and an agenda built on "task
 plus date link" would scream about it. Implicit is wrong here. The property is
 spelled `Deadline` to match what the corpus already had; reading accepts any
 casing and `due` as well.
+
+**A deadline makes a task**, as in Logseq, however it was set: `/deadline`,
+a `Deadline::` typed by hand, or a script setting the property. The checkbox
+is added on the way to disk, with the ISO rewrite; reading still never writes,
+so a dated block that arrived without one from another editor is listed as
+open and finished by one tick.
 
 **Dates are typed, and the quick pick only shortens the typing.** `/dl fr` is
 eight keystrokes and no calendar beats that, so the calendar still only confirms.
