@@ -5,7 +5,7 @@ equipment, and that Ada was going to send a draft. Here are the four ways back.
 
 ## 1. Go to the page
 
-If you know *who* or *what* it was about, go there: `p`, a few letters,
+If you know *who* or *what* it was about, go there: `:`, a few letters,
 `enter`.
 
 Ada's page lists every block that mentions her, each with its children — which
@@ -25,12 +25,12 @@ in your notes that contains it is listed as you type; `enter` goes there.
 
 ## 3. Look at the topic
 
-Everything you tagged `#budget` is on the **budget** page. `p`, `budget`,
+Everything you tagged `#budget` is on the **budget** page. `:`, `budget`,
 `enter`.
 
 ## 4. Look at the day
 
-If you remember *when*, walk there: `[` and `]` step through days, and `p`
+If you remember *when*, walk there: `[` and `]` step through days, and `:`
 accepts a date. A day's page shows what you wrote that day and, below it,
 everything from other days that pointed at it with `@fri` or a similar phrase.
 

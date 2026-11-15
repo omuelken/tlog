@@ -30,7 +30,7 @@ For the same reason tlog never writes a link to a file *outside* the notes.
 | a screenshot or picture on the clipboard | `ctrl+v` | saved as `screenshot-<date>-<time>.png`, linked at the caret |
 | a file in your file manager | drag it onto the terminal (or copy it and `ctrl+v`) | copied in, linked at the caret |
 | a file, from a shell | `tlog attach quote.pdf` | copied in, linked on today's journal (`-p Page` for a page) |
-| a long text on the clipboard | `/paste` | kept as a `.md` file of its own, linked by its first line |
+| a long text on the clipboard | `/note` | kept as a `.md` file of its own, linked by its first line |
 
 And to link something that is already there: `/file` and a few letters of its
 name.
@@ -47,18 +47,16 @@ If a file of the same name is already in `assets/`, the new one gets a number
 
 Follow the link with `g` or a click.
 
-- **A picture** is drawn in the terminal if it can draw pictures (kitty,
-  ghostty, foot, Konsole, WezTerm, iTerm2…); otherwise it opens in your image
-  viewer.
+- **A picture** opens in your image viewer.
 - **A text file** — markdown, a script, CSV — is shown inside tlog. Markdown is
-  rendered with headings, lists and working links. `e` opens it in your editor,
-  `o` hands it to the desktop, `esc` comes back.
+  rendered with headings, lists and code. `o` hands it to the desktop, `esc`
+  comes back.
 - **Anything else** opens in whatever your system uses for it.
 
-## Long text: `/paste`
+## Long text: `/note`
 
 The minutes of a meeting or a long email are worth keeping, but forty lines in
-the middle of a journal page bury everything around them. `/paste` takes the
+the middle of a journal page bury everything around them. `/note` takes the
 text on your clipboard, saves it as its own markdown file, and leaves one link
 in the block.
 
@@ -76,4 +74,4 @@ tlog files budget     # narrowed
 ---
 
 See it in the tutorial: [Files, pictures and long text](../tutorial/07-files.md) ·
-Reference: [`/file` and `/paste`](../reference/slash-commands.md#attach)
+Reference: [`/file` and `/note`](../reference/slash-commands.md#attach)

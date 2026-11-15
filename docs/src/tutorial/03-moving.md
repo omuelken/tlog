@@ -15,7 +15,7 @@ Now single letters do things:
 | `j` `k` or `↓` `↑` | go from block to block |
 | `enter` or `i` | start writing in this block again |
 | `x` | tick a task off (more in [step 6](06-tasks.md)) |
-| `dd` | delete the block and everything under it |
+| `dd` | cut the block and everything under it; `p` puts it back |
 | `z` | fold or unfold |
 | `?` | the help page |
 | `q` | quit |
@@ -43,7 +43,7 @@ created once you write something in it. Press `t` to return.
 
 ## Going to a page
 
-Press `p`. A list opens: the pages you visited recently, then today, a handful
+Press `:`. A list opens: the pages you visited recently, then today, a handful
 of commands, and every journal and page you have. Type a few letters to narrow
 it and press `enter`.
 
@@ -53,7 +53,7 @@ to them, or, more often, by [linking to them](04-linking.md).
 
 Press `b` to go back to today.
 
-`p` is also where the less common things live: **Agenda**, **Backlinks**,
+`:` is also where the less common things live: **Agenda**, **Backlinks**,
 **Settings**, **Messages**, **Help**. Type the first letters of the name.
 
 ---

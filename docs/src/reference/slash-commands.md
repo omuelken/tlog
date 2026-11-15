@@ -4,29 +4,30 @@ A slash command **does something to the block you are in**, or to the page it
 is on, and then disappears. What stays in your file is the effect, never the
 slash.
 
-Type `/` at the start of a word to open the menu. It is shown in four groups:
+Type `/` at the start of a word to open the menu:
 
-| Group | Commands | What they do |
-|---|---|---|
-| [Block](#block) | `/todo` `/done` `/plain` `/deadline` `/quote` `/prop` | change what the block is |
-| [Insert](#insert) | `/code` `/table` | put a structure into it |
-| [Attach](#attach) | `/file` `/paste` | bring something in from outside |
-| [Page](#page) | `/alias` `/tagpage` | say something about the page |
+| Commands | What they do |
+|---|---|
+| [`/todo` `/done` `/deadline` `/quote` `/prop`](#block) | change what the block is |
+| [`/date` `/code` `/table` `/page` `/tag`](#insert) | put something into it |
+| [`/file` `/note`](#attach) | bring something in from outside |
+| [`/alias`](#the-page) | say something about the page |
 
 ## How the menu behaves
 
 - **Keep typing to narrow it.** `/de` is enough for `/deadline`. `↑` `↓`
   choose; `enter` or `tab` runs the highlighted command; `esc` closes the menu
   and leaves the text as you typed it.
+- **A slash can still be just a slash.** Inside a word (`und/oder`, a path, a
+  web address) it never opens the menu; followed by a space (`a / b`) it closes
+  it. A bare `/` shows the whole menu, but `enter` and `tab` after it do what
+  they always do — start the next block, indent — and the slash stays in the
+  text. A row chosen with `↑` `↓` still runs, and so does anything typed after
+  the slash: `/to` and `enter` is `/todo`.
 - **A command can go anywhere in the block.** `Call the supplier /todo` and
   `/todo Call the supplier` do the same.
-- **What you type after a command stays.** `/todo call Ada` gives a task that
-  says "call Ada".
 - **Commands that need something ask for it.** Choosing *Deadline* from the
   menu completes it to `/deadline ` and shows the days; it does not run empty.
-- **Once you type a space, the name must be exact.** `/dl fri` works because
-  `dl` is another name for `deadline`. `/d fri` is just text. A slash inside a
-  word or a web address is never a command.
 - **Nothing is guessed.** A date tlog cannot read, or a file that is not there,
   gives a message and changes nothing.
 
@@ -49,25 +50,17 @@ Makes the block a finished task: `☑`.
 
 Also: `/erledigt`
 
-### /plain
-
-Not a task any more. The checkbox goes, and so does the deadline — a dated
-block is always a task, so the two leave together.
-
-Also: `/untodo`, `/notask`, `/normal`
-
 ### /deadline
 
 `/deadline fri` — the block is due on that day. It becomes a task if it was not
-one. The date can be typed [in many ways](../concepts/dates.md) and is stored
-as `Deadline:: 2026-11-20` under the block.
+one: a dated block is always a task. The date can be typed
+[in many ways](../concepts/dates.md) and is stored as `Deadline:: 2026-11-20`
+under the block.
 
 - Typing `/deadline ` shows the usual days to pick from.
 - A second `/deadline` replaces the first.
-- **`/deadline none`** takes the date off and leaves the task. (`off`, `-`,
-  `kein`, `weg` work too.)
 
-Also: `/due`, `/dl`, `/fällig`
+Also: `/due`, `/dl`, `/fällig`, `/faellig`
 
 ### /quote
 
@@ -91,10 +84,16 @@ Also: `/property`, `/eigenschaft`
 
 ## Insert
 
+### /date
+
+`/date morgen` puts `[[2026-11-16]]` into the text: a link to that day's
+journal. Typing `@` and a day does the same.
+
+Also: `/datum`
+
 ### /code
 
-Puts a code block into the block, with the caret inside. Text typed after the
-command goes into it: `/code ls -la`.
+Puts a code block into the block, with the caret inside.
 
 Write a language after the opening fence — ` ```go ` — to have it coloured.
 Known: go, js/ts, python, sh, sql, json, yaml, toml.
@@ -117,6 +116,17 @@ spreadsheet export usually just works.
 
 Also: `/tabelle`, `/csv`
 
+### /page
+
+Puts `[[]]` in with the caret between the brackets, where page completion takes
+over.
+
+Also: `/link`, `/seite`
+
+### /tag
+
+Puts a `#` in, where tag completion takes over.
+
 ---
 
 ## Attach
@@ -129,21 +139,21 @@ terminal or use `ctrl+v` — see [Attachments](../concepts/attachments.md).
 
 Also: `/attach`, `/att`, `/anhang`
 
-### /paste
+### /note
 
 Takes the **text on the clipboard** and keeps it as a markdown file of its own
 in `assets/`, linked here by its first line. For a long email, minutes, an
 answer you want to keep — anything too long to be a block.
 
-(To paste text *into* the block, use your terminal's paste or `ctrl+v`.)
+(To paste text *into* the block, use `ctrl+v` or your terminal's paste.)
 
-Also: `/note`, `/notiz`
+Also: `/pn`, `/paste-note`, `/notiz`
 
 ---
 
-## Page
+## The page
 
-These change the page the block is on, not the block.
+This changes the page the block is on, not the block.
 
 ### /alias
 
@@ -153,15 +163,8 @@ add another name.
 
 Also: `/aka`, `/zweitname`
 
-### /tagpage
-
-`/tagpage person` — says what this page is, by writing `tags: person` into the
-page's header. The kind shows next to the page in the `@` menu, and the page is
-listed on the tag's own page.
-
-The same can be said from anywhere with `[[Ada Lovelace #person]]`.
-
-Also: `/pagetag`, `/kind`
+To say what a page *is*, write `[[Ada Lovelace #person]]` anywhere: the kind
+shows next to the page in the `@` menu.
 
 → Concepts: [Journals and pages](../concepts/journals-and-pages.md#more-than-one-name) ·
 [Tags](../concepts/tags.md#job-2-what-a-page-is)
@@ -175,9 +178,8 @@ Some things you might look for here are done another way:
 | Looking for | Use |
 |---|---|
 | link a page | `@` or `[[` — [The four signs](signs.md) |
-| insert a date | `@fri` |
 | add a tag | `#topic` |
-| agenda, backlinks, settings, help | `p` while moving, then type the name |
+| agenda, backlinks, settings, help | `:` while moving, then type the name |
 | delete a block | `dd` while moving |
 
 From a script, every slash command is available as

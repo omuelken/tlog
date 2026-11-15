@@ -81,7 +81,7 @@ Tutorial: [Finding things again](../tutorial/08-finding.md)
 | mention a person or project | `@name` |
 | mention a day | `@fri` |
 | label a block with a topic | `#topic` |
-| say what a page is | `[[Name #kind]]`, or [`/tagpage kind`](slash-commands.md#tagpage) on it |
+| say what a page is | `[[Name #kind]]`, or `tags: kind` in its header |
 | quote or reuse one block | `((words from it` |
 | link a file I attached | [`/file`](slash-commands.md#file) |
 | link a website | paste the address |

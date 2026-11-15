@@ -1,7 +1,7 @@
 # Settings
 
-tlog has few settings, on purpose. Change them in the outliner — `p`, then
-type `settings` — or from a shell:
+tlog has few settings, on purpose. Change them in the outliner — `:`, then
+type `settings` — with `⌘,` in the desktop app, or from a shell:
 
 ```sh
 tlog config                             # everything, and where each value came from
@@ -31,6 +31,8 @@ there is. Your values are kept; comments you add by hand are not.
 | `format.blank_lines` | a blank line between top-level blocks in the files ² |
 | `deadline.property` | whether a deadline is written as `Deadline::` or `due::` |
 | `dates.end_of_week` | what `eow` means: friday or sunday |
+| `app.font_size` | text size in the desktop app, in pixels; the outliner uses the terminal's font |
+| `outliner.terminal` | what opens a folder link in the outliner: empty for a new tab in this terminal, or a command with `{dir}` for the folder |
 
 ¹ **Kept with the notes, not with tlog.** Whether these notes are pushed, and
 where to, is stored in the notes folder's own git configuration. A copy of your
@@ -49,10 +51,6 @@ config file, which beats the default.
 | | Flag | Environment |
 |---|---|---|
 | notes folder | `-dir <path>` | `TLOG_DIR` |
-| picture drawing | | `TLOG_IMAGES=kitty\|sixel\|iterm\|none` |
-
-`TLOG_IMAGES` is only needed if tlog guesses wrong about whether your terminal
-can draw pictures.
 
 ## What is not a setting
 

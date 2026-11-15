@@ -46,6 +46,6 @@ Your notes will live in `~/notes`. If you would rather keep them elsewhere, set
 4. [People, pages and days](04-linking.md) — `@` and `[[`
 5. [Topics](05-topics.md) — `#`
 6. [Tasks and deadlines](06-tasks.md) — `/todo`, `/deadline` and the agenda
-7. [Files, pictures and long text](07-files.md) — paste, drop, `/file`, `/paste`
+7. [Files, pictures and long text](07-files.md) — paste, drop, `/file`, `/note`
 8. [Finding things again](08-finding.md) — search, backlinks, block references
 9. [Keeping notes safe and in sync](09-sync.md) — undo, git, other editors

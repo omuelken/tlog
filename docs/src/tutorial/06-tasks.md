@@ -92,8 +92,8 @@ tlog due      # only the dated ones
 
 | You want to | Type |
 |---|---|
-| take the deadline off but keep the task | `/deadline none` |
-| make it an ordinary block again | `/plain` |
+| take the deadline off but keep the task | `/prop Deadline` |
+| make it an ordinary block again | delete the `[ ]` at the start of the block |
 | reopen a finished task | `x` again, or `/todo` |
 
 ---

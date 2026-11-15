@@ -22,15 +22,14 @@ the highlighted one. A new tag needs nothing — you just type it.
 A tag *on a page* says what kind of thing the page is: a person, a project, a
 paper, a repository.
 
-There are three ways to say it, all equivalent:
+There are two ways to say it, both equivalent:
 
 | Where | How |
 |---|---|
-| on the page itself | `/tagpage person` |
 | in passing, while linking | `[[Ada Lovelace #person]]` |
 | in the file's header | `tags: person, colleague` |
 
-The second form is the handy one. The first time you mention someone you can
+The first form is the handy one. The first time you mention someone you can
 say what they are in the same breath, without leaving the line you are writing:
 
 ```text
@@ -46,7 +45,7 @@ What this gives you:
 ## A tag is a page
 
 There is no separate world of tags. `#budget` and `[[budget]]` are the same
-page. It can have notes of its own, an alias, even a kind (`/tagpage topic`).
+page. It can have notes of its own, an alias, even a kind (`tags: topic`).
 
 So the difference between `#budget` and `[[budget]]` in a block is only one of
 tone: a tag reads as a label at the end of a line, a link reads as part of the
@@ -58,7 +57,7 @@ sentence. Both put the block on the page.
 |---|---|
 | this block mentions Ada | `@ada` → `[[Ada Lovelace]]` |
 | this block belongs under "budget" | `#budget` |
-| Ada is a person | `/tagpage person` on her page, or `[[Ada Lovelace #person]]` |
+| Ada is a person | `[[Ada Lovelace #person]]`, or `tags: person` in her page's header |
 
 ## Good tags
 
@@ -73,5 +72,4 @@ A few habits that keep tags useful:
 ---
 
 See it in the tutorial: [Topics](../tutorial/05-topics.md) ·
-Reference: [The four signs](../reference/signs.md) ·
-[`/tagpage`](../reference/slash-commands.md#tagpage)
+Reference: [The four signs](../reference/signs.md)

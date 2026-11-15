@@ -12,9 +12,7 @@ Take a screenshot so that it is on your clipboard. In tlog, with the caret
 where you want it, press `ctrl+v`.
 
 The picture is saved into `assets/` and a link to it appears at the caret.
-Press `esc`, move onto the block and press `g`: in a terminal that can draw
-pictures (kitty, ghostty, foot, WezTerm, iTerm2 and others) it is shown right
-there; anywhere else it opens in your image viewer.
+Press `esc`, move onto the block and press `g`: it opens in your image viewer.
 
 > It has to be plain `ctrl+v`. `ctrl+shift+v` is your terminal's own paste,
 > which can only deliver text.
@@ -41,7 +39,7 @@ Sometimes you want to keep a whole email or a set of minutes, but not as forty
 blocks in the middle of your day. Copy the text, and in a block type:
 
 ```text
-Minutes from the board /paste
+Minutes from the board /note
 ```
 
 The text becomes a markdown file of its own in `assets/`, and the block links
@@ -51,8 +49,8 @@ to it by its first line:
 • Minutes from the board [Minutes, 15 November](../assets/2026-11-15-minutes-15-november.md)
 ```
 
-Following the link (`g`) shows the file inside tlog, nicely rendered. `e` there
-opens it in your editor.
+Following the link (`g`) shows the file inside tlog, nicely rendered. `o` there
+hands it to the desktop, to open in whatever opens markdown.
 
 ## Ordinary links
 
@@ -65,6 +63,6 @@ it or press `g` to open it.
 **What you just met**
 
 - Where attached files live and why: [Attachments](../concepts/attachments.md)
-- `/file` and `/paste`: [Slash commands](../reference/slash-commands.md#attach)
+- `/file` and `/note`: [Slash commands](../reference/slash-commands.md#attach)
 
 Next: [Finding things again](08-finding.md)

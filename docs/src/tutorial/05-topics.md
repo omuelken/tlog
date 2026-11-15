@@ -15,7 +15,7 @@ Second quote for the lab equipment is 4,200 #budget
 Nothing visible happens — a tag is complete the moment you type it. But there
 is now a page called **budget**, and this block is listed on it.
 
-Go and look: `esc`, then `p`, type `budget`, `enter`. There is your block.
+Go and look: `esc`, then `:`, type `budget`, `enter`. There is your block.
 Press `b` to come back.
 
 The next time you type `#b`, a menu offers `#budget`. Press `tab` to take it.
@@ -49,33 +49,24 @@ If you are unsure, it does not matter much. Both end up on the page.
 There is one more use for tags, and it is worth learning early: saying what
 kind of thing a page is.
 
-Go to Ada's page (`p`, `ada`, `enter`), start writing in the empty block, and
-type:
+Say it in passing, the next time you mention someone, by putting the tag
+inside the brackets:
 
 ```text
-/tagpage person
+Met [[Ada Lovelace #person]] at the workshop
 ```
 
-Press `enter`. The command disappears; the page now carries the tag `person`.
-From now on the `@` menu shows *person* next to Ada's name — useful the day
-you also know an Ada who is a programming language — and the **person** page
-lists everyone you have marked this way.
-
-You can also say it in passing, the first time you mention someone, by putting
-the tag inside the brackets:
-
-```text
-Met [[Charles Babbage #person]] at the workshop
-```
-
-That reads "Charles Babbage, who is a person". You never have to visit his
-page to declare it.
+That reads "Ada Lovelace, who is a person", and her page now carries the tag
+`person`. From now on the `@` menu shows *person* next to Ada's name — useful
+the day you also know an Ada who is a programming language — and the
+**person** page lists everyone you have marked this way. You never have to
+visit her page to declare it.
 
 ---
 
 **What you just met**
 
 - Topics, kinds, and how they differ: [Tags](../concepts/tags.md)
-- `/tagpage` is a slash command — there are more: [Slash commands](../reference/slash-commands.md)
+- Changing a block with `/`: [Slash commands](../reference/slash-commands.md)
 
 Next: [Tasks and deadlines](06-tasks.md)

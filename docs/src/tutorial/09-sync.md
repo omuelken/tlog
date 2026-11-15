@@ -85,8 +85,8 @@ That is all of tlog's everyday use. To recap the whole thing:
 - **Write** in today's journal; `enter` for the next block, `tab` to nest.
 - **`@`** finds a person, page or day and links it.
 - **`#`** files a block under a topic.
-- **`/`** changes the block: `/todo`, `/deadline fri`, `/paste`…
-- **`esc`** to move around, `p` to go somewhere, `a` for what is due.
+- **`/`** changes the block: `/todo`, `/deadline fri`, `/note`…
+- **`esc`** to move around, `:` to go somewhere, `a` for what is due.
 
 From here, the *Concepts* chapters go deeper on each idea, and the *Reference*
 is there when you need to look something up.

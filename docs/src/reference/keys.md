@@ -38,15 +38,20 @@ are moving.
 | `h` `l` · `z` | fold, unfold · toggle |
 | `tab` · `shift+tab` | indent · outdent |
 | `alt+↑` · `alt+↓` | move the block |
+| `o` · `O` | a new block below · above, and write in it |
 | `x` · `space` | tick the task off, or make the block one |
-| `dd` | delete the block and everything under it |
-| `g` · `o` | follow the link in this block |
+| `dd` · `yy` | cut · copy the block and everything under it |
+| `p` · `P` | paste below · above: an outline as blocks, other text as one block |
+| `V` | select blocks: `j` `k` grow it, `y` copy, `d` cut, `>` `<` indent, `esc` stop |
+| `v` | select text in the block: `h l w b e 0 $` move, `y` copy, `d` cut, `c` change, `p` paste, `x` one character, `i` write |
+| `g` | follow the link in this block |
 | `b` · `backspace` | back to where you came from |
 | `t` · `[` · `]` | today · the day before · the day after |
-| `p` | go to a page, or run a command by name |
+| `J` | journals: every day, newest first |
+| `:` | go to a page, or run a command by name |
 | `/` | search every block |
 | `a` | the agenda |
-| `y` · `Y` | copy the block's text · copy a link in it |
+| `Y` | copy a link in the block |
 | `u` · `U` | undo · redo |
 | `?` | help |
 | `q` | quit |
@@ -58,6 +63,7 @@ are moving.
 | `ctrl+p` | go to |
 | `ctrl+f` | search |
 | `ctrl+t` | today |
+| `ctrl+n` | the next of the recent places in the header, like alt-tab |
 | `alt+←` · `alt+→` | the day before · the day after |
 | `ctrl+o` | back |
 | `ctrl+g` | follow the link at the caret |
@@ -86,13 +92,18 @@ are moving.
 | `a` | also show dated tasks that are done |
 | `esc` · `q` | close |
 
-## When a file or picture is shown
+## When a text file is shown
 
 | Key | What it does |
 |---|---|
-| `e` | edit it in `$VISUAL` or `$EDITOR` |
+| `j` `k` · `↓` `↑` | scroll |
+| `space` · `pgdn` · `pgup` | a page down · up |
+| `g` · `G` | top · bottom |
 | `o` | hand it to the desktop |
-| `esc` | back |
+| `esc` · `q` · `b` | back |
+
+A picture is not shown inside tlog; following a link to one hands it to the
+desktop.
 
 ## The mouse
 
@@ -108,14 +119,15 @@ are moving.
 | drop a file on the window | attach it |
 | `shift`+drag | select text, as in any terminal program |
 
-## The `p` list
+## The `:` list
 
-`p` (or `ctrl+p`) shows, in order: pages you visited recently, today, the
+`:` (or `ctrl+p`) shows, in order: pages you visited recently, today, the
 commands below, then every journal and page. Typing narrows all of it. A name
 that matches nothing makes a new page.
 
 | Command | What it does |
 |---|---|
+| Journals | every day, newest first |
 | Agenda | every open task |
 | Backlinks | what links to this page, as a list |
 | Delete block | the block under the cursor and everything in it |

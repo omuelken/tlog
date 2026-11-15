@@ -19,7 +19,7 @@ Moving between them:
 | make it a task | `/todo` | `x` while moving, `ctrl+d` while writing |
 | finish it | `/done` | `x` · `ctrl+d` |
 | reopen it | `/todo` | `x` · `ctrl+d` |
-| make it plain again | `/plain` | |
+| make it plain again | delete the `[ ]` at the start | |
 
 ## Deadlines
 
@@ -34,14 +34,14 @@ Three things follow from a deadline:
   yellow when it is today.
 - **It puts the block on the agenda**, sorted by date.
 
-`/deadline` again replaces the date. `/deadline none` removes it and leaves the
-task. `/plain` removes both.
+`/deadline` again replaces the date. `/prop Deadline`, with no value, removes
+it and leaves the task.
 
 A finished task is never overdue.
 
 ## The agenda
 
-`a` while moving (or **Agenda** in `p`) shows every open task across all your
+`a` while moving (or **Agenda** in `:`) shows every open task across all your
 notes:
 
 1. the dated ones, soonest first,

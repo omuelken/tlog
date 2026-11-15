@@ -36,7 +36,7 @@ page can be nothing but the forty times you mentioned her, in order.
 You do not "create" pages. One appears when you
 
 - link to it — `@Ada Lovelace` or `[[Ada Lovelace]]` — or
-- go to it — `p`, type a new name, `enter`.
+- go to it — `:`, type a new name, `enter`.
 
 Until you write on the page itself, there is not even a file for it. It exists
 because something points at it.
