@@ -1765,7 +1765,7 @@ func (m *Model) commands() []pickItem {
 		return pickItem{label: label, detail: detail, run: run}
 	}
 	return []pickItem{
-		cmd("Agenda", "everything with a deadline", (*Model).openAgenda),
+		cmd("Agenda", "every open task", (*Model).openAgenda),
 		cmd("Backlinks", "what links to this page", (*Model).openBacklinks),
 		cmd("Delete block", "the block under the cursor and everything in it", (*Model).deleteBlock),
 		cmd("Reload from disk", "ctrl+r · discards what is not saved", (*Model).reload),

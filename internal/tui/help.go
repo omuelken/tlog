@@ -117,7 +117,7 @@ func (m *Model) helpParts() []helpPart {
 		heading("Commands"),
 		para("Type / in a block for the commands that change it: /todo, /deadline, /date, /quote, " +
 			"/code, /table, /file, /prop, /alias. The rest — agenda, backlinks, settings, messages — " +
-			"are in p by name."),
+			"are in : by name."),
 	}
 }
 
