@@ -360,20 +360,6 @@ func copied(m *Model) *[]string {
 	return &got
 }
 
-func TestYCopiesTheBlocksOwnText(t *testing.T) {
-	m := treeModel(t, "- see [the docs](https://go.dev/doc)\n  and a second line\n  - a child\n")
-	got := copied(m)
-	send(t, m, k(tea.KeyEsc))
-	send(t, m, runes("y"))
-	want := "see [the docs](https://go.dev/doc)\nand a second line"
-	if len(*got) != 1 || (*got)[0] != want {
-		t.Fatalf("copied %q, want %q", *got, want)
-	}
-	if !strings.Contains(m.status, "copied") {
-		t.Fatalf("nothing said it was copied: %q", m.status)
-	}
-}
-
 func TestShiftYCopiesWhereALinkPoints(t *testing.T) {
 	m := treeModel(t, "- see [the docs](https://go.dev/doc)\n\n- met [[Ada Lovelace]]\n\n- [plan](../assets/plan.pdf)\n")
 	if err := os.MkdirAll(filepath.Join(m.svc.Store.Root, "assets"), 0o755); err != nil {

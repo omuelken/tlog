@@ -703,10 +703,6 @@ func (m *Model) moveKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 		m.structural(func(a app.Addr) (*app.Result, error) { return m.svc.Move(a, -1) })
 	case "alt+down":
 		m.structural(func(a app.Addr) (*app.Result, error) { return m.svc.Move(a, 1) })
-	case "y":
-		if b := m.current(); b != nil {
-			m.copy(b.Text, "the block")
-		}
 	case "Y":
 		m.copyLink()
 	case "u":
