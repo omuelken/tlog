@@ -83,6 +83,8 @@ tlog block <addr> indent | outdent | up | down | merge | delete
 tlog block <addr> cmd <name> [arg]               # any slash command: tlog commands
 tlog block <addr> ref                            # a durable [[Page#^anchor]] link
 tlog attach -p "Grant" ./report.pdf              # into the notes' assets/, linked in the page
+tlog attach -clipboard                           # the screenshot on the clipboard, likewise
+tlog attach -note -title "Minutes" - < minutes.txt  # long text as a linked .md note
 tlog undo [rel]                                  # the last thing tlog committed
 ```
 

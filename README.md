@@ -24,6 +24,10 @@ is one `git checkout` away from being undone. Add a remote and
 Three ways in, one core: a terminal outliner, a CLI, and a desktop app that
 renders in the system WebView and weighs about 8 MB.
 
+**New here?** The [documentation](https://gh.tschieber.de/tlog/) starts with a
+twenty-minute tutorial and explains the ideas one at a time. Its source is in
+`docs/`; `just docs-serve` previews it.
+
 ## Install
 
 ```sh
@@ -95,7 +99,7 @@ around with single letters; `enter` picks it back up.
 | `p` / `P` | paste below · above; an outline as blocks, other text as one block |
 | `v` | select text inside the block: `h l w b e 0 $` move, `y` copy, `d` cut, `c` change, `p` paste, `x` one character, `i` write; `esc` back |
 | `z` / `h` `l` | fold · unfold |
-| `a` | agenda: everything with a deadline — `space` ticks off, `a` adds what is done, newest first |
+| `a` | agenda: open tasks, deadlines first, then those without a date — `space` ticks off, `a` adds what is done, newest first |
 | `u` / `U` | undo, redo — a change on another page takes you there |
 | `?` / `q` | help · quit |
 
@@ -376,19 +380,21 @@ tlog due          # everything open and dated, soonest first
 tlog due -all     # then what is done, newest first
 ```
 
-**Agenda** is that same list, from the same call: `a` in the outliner while moving, `⌘⇧A` in
-the app, where it opens over the page and Esc leaves you where you were writing.
-Enter or a click goes to the block; space, or a click on its ☐ in the app, ticks
-it off without leaving, and `a` shows what is already done too, to open
-something again. Open items stay on top, soonest first; what is done follows,
-newest first. Nothing records when a thing was finished, so newest means the
-latest deadline. The order is the core's, so the outliner, the app and
+**Agenda** is `tlog todo`'s list, from the same call: `a` in the outliner while
+moving shows every open task, what has a deadline first and soonest first, then
+the rest under "No date"; the date's colour says how soon. `⌘⇧A` in the app
+shows what has a deadline, over the page, and Esc leaves you where you were
+writing. Enter or a click goes to the block; space, or a click on its ☐ in the
+app, ticks it off without leaving, and `a` also shows the dated ones already
+done, to open something again. Open items stay on top, soonest first; what is
+done follows, newest first. Nothing records when a thing was finished, so newest
+means the latest deadline. The order is the core's, so the outliner, the app and
 `tlog due -all` all agree.
 
 ## Settings
 
-`~/.config/tlog/config.toml`, written the first time something changes. `,` in
-the outliner opens the settings, `⌘,` in the app, and `tlog config` prints them
+`~/.config/tlog/config.toml`, written the first time something changes. In the
+outliner, `:` and then `settings` opens them, `⌘,` in the app, and `tlog config` prints them
 with where each one came from.
 
 ```sh
@@ -460,6 +466,7 @@ is right from every note and which any markdown reader follows.
 tlog attach report.pdf slides.pptx   # into assets/, linked in today's journal
 tlog attach -p "Projekt" report.pdf  # ...or on a page
 tlog attach -link-only report.pdf    # copied, link printed, no note written
+tlog attach -clipboard               # the screenshot on the clipboard, saved and linked
 tlog files                           # what is attached, newest first
 tlog files budget                    # narrowed, fuzzily if nothing contains it
 ```
@@ -467,7 +474,12 @@ tlog files budget                    # narrowed, fuzzily if nothing contains it
 In a note, `/file` offers what is attached. **Drop files onto the terminal or
 the window** and they are copied into `assets/` with their links where you are;
 a picture is shown in the page, and a screenshot pasted into a block is saved
-the same way.
+the same way. **Ctrl+V pastes a screenshot** in the outliner: tlog reads the
+clipboard itself (`wl-paste`, `xclip`, or `osascript` on a Mac), saves the
+picture as `screenshot-<date>-<time>.png` and links it at the caret; files
+copied in a file manager attach the same way, and text pastes as text. It has to
+be plain Ctrl+V — Ctrl+Shift+V and Cmd+V are the terminal's own paste, which
+only ever delivers text.
 
 The original file is never moved: attaching it to a note should not take it
 away from whatever else refers to it. Images become `![embeds]`, everything

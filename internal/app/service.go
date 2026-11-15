@@ -6,6 +6,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/tilman-schieber/tlog/internal/clipboard"
 	"os"
 	"strconv"
 	"strings"
@@ -42,6 +43,14 @@ type Service struct {
 	// following a link to a program does instead of running it. Nil means
 	// Finder, or the folder in the system's file manager; tests record.
 	Reveal func(path string) error
+
+	// Clipboard reads the system clipboard. Nil means the real one; tests put
+	// a fixed picture or text here.
+	Clipboard func() (clipboard.Content, error)
+
+	// CopyTo writes text to the system clipboard. Nil means the real one;
+	// tests put a recorder here.
+	CopyTo func(text string) error
 
 	hist history // what Undo takes back; see undo.go
 }
@@ -172,6 +181,10 @@ func (s *Service) Commit() error { return s.Git.Flush() }
 // directory has been told to: writing a note and publishing it are different
 // acts, and only one of them is easy to take back.
 func (s *Service) Push() error { return s.Git.Push() }
+
+// Pull brings in notes pushed from another machine, replaying this copy's
+// unpushed commits on top. A clash is refused, never merged; see store.Git.Pull.
+func (s *Service) Pull() error { return s.Git.Pull() }
 
 // SetAutoPush turns pushing-on-commit on or off for this notes directory.
 func (s *Service) SetAutoPush(on bool) error { return s.Git.SetAutoPush(on) }

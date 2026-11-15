@@ -195,7 +195,23 @@ func Run(svc *app.Service, rel string) error {
 	return err
 }
 
-func (m *Model) Init() tea.Cmd { return watchCmd(m.changes) }
+func (m *Model) Init() tea.Cmd {
+	if m.svc.Sync().AutoPush {
+		return tea.Batch(watchCmd(m.changes), pullCmd(m.svc))
+	}
+	return watchCmd(m.changes)
+}
+
+// pulledMsg is the end of the pull made on opening, when these notes are
+// pushed somewhere: another machine may have written since.
+type pulledMsg struct{ err error }
+
+// pullCmd pulls in the background, so a slow network never delays the first
+// keystroke. What arrives reaches the screen the way any edit made elsewhere
+// does, through the watch.
+func pullCmd(svc *app.Service) tea.Cmd {
+	return func() tea.Msg { return pulledMsg{svc.Pull()} }
+}
 
 // load reads a file for editing together with what the rest of the notes say
 // about it. Both come from the core in one graph build. The journals page is
@@ -539,6 +555,11 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.mouse(msg)
 		return m, nil
+	case pulledMsg:
+		if msg.err != nil {
+			m.status = "not pulled: " + msg.err.Error()
+		}
+		return m, nil
 	case changedMsg:
 		m.changed(msg)
 		// Wait for the next one. Each change schedules the next wait, so the
@@ -682,6 +703,8 @@ func (m *Model) moveKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 		m.structural(func(a app.Addr) (*app.Result, error) { return m.svc.Move(a, -1) })
 	case "alt+down":
 		m.structural(func(a app.Addr) (*app.Result, error) { return m.svc.Move(a, 1) })
+	case "Y":
+		m.copyLink()
 	case "u":
 		m.undoFile(false)
 	case "U":
@@ -771,6 +794,9 @@ func (m *Model) outlineKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.undoFile(true)
+		return m, nil
+	case "ctrl+v":
+		m.pasteClipboard()
 		return m, nil
 	case "ctrl+g":
 		if m.activateRow() {
@@ -1602,6 +1628,44 @@ func (m *Model) followLink() tea.Cmd {
 	}
 }
 
+// copyLink puts a link of the highlighted block on the clipboard, asking
+// which when there are several.
+func (m *Model) copyLink() {
+	b := m.current()
+	if b == nil {
+		return
+	}
+	items := blockLinks(b)
+	switch len(items) {
+	case 0:
+		m.status = "no link in this block"
+	case 1:
+		m.copyItem(items[0])
+	default:
+		for i := range items {
+			it := items[i]
+			items[i].run = func(m *Model) { m.mode = modeMove; m.copyItem(it) }
+		}
+		m.pick = newPicker("copy link", items)
+		m.mode = modeLinks
+	}
+}
+
+func (m *Model) copyItem(it pickItem) {
+	a := m.svc.LinkAddress(m.doc.Rel, it.link, it.url)
+	m.copy(a, shortAddress(a))
+}
+
+// copy puts text on the clipboard and says what went there.
+func (m *Model) copy(text, what string) {
+	if err := m.svc.Copy(text); err != nil {
+		m.errMsg = err.Error()
+		return
+	}
+	m.errMsg = ""
+	m.status = "copied " + what
+}
+
 func (m *Model) openLink(l markdown.Link) {
 	rel, err := m.svc.OpenPage(l.Page)
 	if err != nil {
@@ -1701,7 +1765,7 @@ func (m *Model) commands() []pickItem {
 		return pickItem{label: label, detail: detail, run: run}
 	}
 	return []pickItem{
-		cmd("Agenda", "everything with a deadline", (*Model).openAgenda),
+		cmd("Agenda", "every open task", (*Model).openAgenda),
 		cmd("Backlinks", "what links to this page", (*Model).openBacklinks),
 		cmd("Delete block", "the block under the cursor and everything in it", (*Model).deleteBlock),
 		cmd("Reload from disk", "ctrl+r · discards what is not saved", (*Model).reload),

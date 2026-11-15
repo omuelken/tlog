@@ -254,6 +254,17 @@ not an editor on purpose: an attached file is not a note, has no addresses and
 no compare-and-swap, and editing it belongs to an editor. `tlog links` marks
 such a file `"plain": true`.
 
+**Ctrl+V reads the clipboard; the terminal's paste cannot.** A terminal's
+paste (ctrl+shift+v, cmd+v) is bracketed text and nothing else, so a screenshot
+on the clipboard never reaches a terminal program that way. Plain ctrl+v is not
+the terminal's: it arrives as a key, and tlog answers it by asking the system
+for the clipboard — `wl-paste` or `xclip`, `osascript` and `pbpaste` on a Mac —
+preferring a picture, then copied files (`text/uri-list`), then text. Nothing
+is linked against, and a missing tool is an error that names it.
+`internal/clipboard` only reads; the picture goes through the same
+`Service.AttachImage` the desktop app's paste uses, and `tlog attach
+-clipboard` is the same operation for a script.
+
 **A drop onto the terminal is a paste of paths.** A terminal cannot hand over
 files, only type their names — shell-escaped, quoted or as `file://` addresses,
 depending on the terminal. `app.DroppedFiles` treats a paste as a drop only when
@@ -563,10 +574,21 @@ push sits on top. Failure reads "committed, but not pushed" and the commit
 stands. A push that failed in the background is surfaced in both adapters,
 because a failure nobody sees is the same as no backup at all.
 
-**It never forces and never merges**, and it is bounded at twenty seconds. A
-rejected push means the remote moved; resolving that is a decision, and the same
-rule applies as to a lost write — refuse and report rather than merge behind
-someone's back. Auto-pull is not built for exactly that reason.
+**It never forces**, and it is bounded at twenty seconds. A rejected push
+means the remote moved — and with notes written on two machines it moves all
+the time. Refusing every such push made autopush fail on every commit once the
+other machine had written anything (November 2026: 329 commits from one
+machine, every push from the other rejected). So a rejected push pulls: this
+copy's unpushed commits are rebased onto what arrived, with uncommitted work
+set aside and put back, and the push is tried once more. The outliner pulls
+the same way when it opens, when pushing is on; `tlog pull` does it by hand.
+
+**A clash is still never merged.** When both machines changed the same lines,
+the rebase is undone, both copies stay exactly as they were, and the error
+names the files. Which version of a note is right is a decision — the same
+rule as for a lost write. A rebase of commits that touch different files or
+different lines makes no such decision, which is why it is automatic and a
+merge commit is not built.
 
 ## Scope
 

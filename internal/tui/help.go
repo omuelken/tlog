@@ -39,6 +39,7 @@ func (m *Model) helpParts() []helpPart {
 		para("Where tlog opens. Typing types into the block under the caret, and leaving a block saves it."),
 		key("enter", "a new block, splitting this one at the caret"),
 		key("alt+enter", "a new line inside the block (also ctrl+j)"),
+		key("ctrl+v", "paste from the clipboard: a screenshot is saved into assets/ and linked here, copied files are attached, text is text"),
 		key("tab  shift+tab", "indent, outdent"),
 		key("alt+↑  alt+↓", "move the block, with everything under it"),
 		key("backspace", "at the start of a block, join it to the one above; an empty block goes"),
@@ -66,7 +67,8 @@ func (m *Model) helpParts() []helpPart {
 		key("v", "select text inside the block: h l w b e 0 $ move, y copies, d cuts, c changes, p pastes, "+
 			"x takes one character, i writes; esc ends the selection, esc again comes back"),
 		key("z  h l", "fold and unfold"),
-		key("a", "the agenda: everything with a deadline"),
+		key("a", "the agenda: open tasks, deadlines first, then those without a date"),
+		key("Y", "copy a link in the block — the address, a file's full path, or [[the page]]"),
 		key("u  U", "undo, redo — a change on another page takes you there"),
 		key("q", "quit"),
 
@@ -104,16 +106,18 @@ func (m *Model) helpParts() []helpPart {
 			"A program is never run — a terminal opens beside it instead"),
 		key("drop a file", "drag it onto the terminal: it is copied into the notes' assets/ and linked where you are"),
 		key("/file", "link something already attached"),
+		key("/note", "keep the text on the clipboard — an email, minutes, an answer — as a .md file of its own, linked here by its first line; following the link shows it"),
 
 		heading("The mouse"),
 		key("click", "a block to write there, a link to open it, ▸ ▾ to fold, ☐ to tick"),
+		key("right-click", "a link, to copy where it points"),
 		key("wheel", "move through the page"),
 		key("shift+drag", "select text, as in any program that uses the mouse"),
 
 		heading("Commands"),
 		para("Type / in a block for the commands that change it: /todo, /deadline, /date, /quote, " +
 			"/code, /table, /file, /prop, /alias. The rest — agenda, backlinks, settings, messages — " +
-			"are in p by name."),
+			"are in : by name."),
 	}
 }
 

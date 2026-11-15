@@ -43,6 +43,8 @@ is the one read-like command that creates the page and prints its path.
 | `tlog append <rel> [-if-match <hash>] <text>` | a block at the end of a file by path, refused (4) if the file's hash is not `hash` | the new `addr` |
 | `tlog attach [-p page] FILE…` | copies files into the notes' `assets/` (committed with them), links them as `../assets/name` in one block in today's journal or a page | names and sizes, then the file's path |
 | `tlog attach -link-only FILE…` | copies into `assets/` and prints the links, writes no note | links |
+| `tlog attach -clipboard [-p page] [-link-only]` | saves the picture on the system clipboard (a screenshot) into `assets/` as `screenshot-<date>-<time>.png` and links it like a file; exit 3 if the clipboard holds no picture | as for a file |
+| `tlog attach -note [-] [-title t] [-p page] [-link-only]` | keeps text as a markdown file of its own in `assets/`, named `<date>-<title>.md`, and links it as `[title](../assets/…)`: from the clipboard, or from stdin with `-`. The title is `-title` or the text's first line. Use it for a long text a block should point at rather than hold | as for a file |
 | `tlog attach -migrate [-from dir] [-dry-run]` | copies files that notes link on the old `~/.att/store` shelf into `assets/` and rewrites those links; files missing here are reported and left alone | one line per file, then a summary; `-json` `copied`, `notes`, `links`, `missing` |
 | `tlog alias <page> <name>` | another name for a page, in its frontmatter | a line |
 
@@ -95,7 +97,8 @@ undo is itself committed.
 
 | command | what it does |
 |---|---|
-| `tlog push` | commit what is outstanding and push; needs a remote |
+| `tlog push` | commit what is outstanding and push; needs a remote. When another machine pushed first, its notes are pulled in and the push retried |
+| `tlog pull` | bring in what another machine pushed; this copy's unpushed commits go on top, a clash is refused and nothing is merged |
 | `tlog push -auto on\|off` | push on every commit, or not — kept in the notes repository |
 | `tlog config git.remote <url>` | where pushing goes |
 | `tlog config <key> <value>` | change a setting; a bad value is exit 2 and changes nothing |

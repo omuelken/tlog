@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/tilman-schieber/tlog/internal/app"
 	"github.com/tilman-schieber/tlog/internal/config"
@@ -29,11 +30,14 @@ usage:
   tlog due [-all]             what is dated and still open, soonest first
   tlog attach [-p page] FILE  copy files into the notes' assets/ and link them here
   tlog attach -link-only FILE copy a file into assets/ and print its link, no note
+  tlog attach -clipboard      the screenshot on the clipboard, into assets/ and linked here
+  tlog attach -note [-]       the clipboard's text (or stdin's) as a linked .md note
   tlog attach -migrate        bring files linked on the old ~/.att shelf into assets/
   tlog files [query] [-links] what is attached, newest first
   tlog alias <page> <name>    give a page another name
   tlog config                 the settings; <key> reads one, <key> <value> sets it
   tlog push [-auto on|off]    push the notes now, or set pushing on every commit
+  tlog pull                   bring in notes pushed from another machine
   tlog sync                   where the notes stand with their remote
   tlog import [-from dir]     import a Logseq graph into the notes directory
   tlog version                print the version
@@ -109,7 +113,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	}
 
 	commands := map[string]func([]string, io.Writer, io.Writer, *app.Service) int{
-		"todo": cmdTodo, "add": cmdAdd, "import": cmdImport, "push": cmdPush,
+		"todo": cmdTodo, "add": cmdAdd, "import": cmdImport, "push": cmdPush, "pull": cmdPull,
 		"due": cmdDue, "attach": cmdAttach, "config": cmdConfig, "files": cmdFiles,
 		"search": cmdSearch, "view": cmdView, "index": cmdIndex, "block": cmdBlock,
 		"alias": cmdAlias, "commands": cmdCommands, "date": cmdDate, "people": cmdPeople,
@@ -357,10 +361,60 @@ func cmdConfig(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 	return exitOK
 }
 
+// attachNote is `tlog attach -note`: text kept as a markdown file of its own
+// and linked, from the clipboard, or from stdin with "-".
+func attachNote(args []string, stdout, stderr io.Writer, svc *app.Service, page, title string, only, asJSON bool) int {
+	if len(args) > 1 || (len(args) == 1 && args[0] != "-") {
+		fmt.Fprintln(stderr, "tlog attach -note: reads the clipboard, or stdin with -; it takes no files")
+		return exitUsage
+	}
+	rel := ""
+	if !only {
+		rel = svc.TodayRel()
+		if page != "" {
+			r, _, err := svc.ResolvePage(page)
+			if err != nil {
+				return fail(stderr, err)
+			}
+			rel = r
+		}
+	}
+	var a app.AttachView
+	var err error
+	if len(args) == 1 {
+		text, rerr := textFrom(args)
+		if rerr != nil {
+			return fail(stderr, rerr)
+		}
+		a, err = svc.AttachNoteTo(rel, text, title, time.Now())
+	} else {
+		a, err = svc.AttachClipboardNote(rel, title, time.Now())
+	}
+	settle(stderr, svc)
+	if err != nil {
+		return fail(stderr, err)
+	}
+	if asJSON {
+		if eerr := emit(stdout, []app.AttachView{a}); eerr != nil {
+			return fail(stderr, eerr)
+		}
+		return exitOK
+	}
+	if only {
+		fmt.Fprintln(stdout, a.Link)
+	} else {
+		fmt.Fprintf(stdout, "%s  %s\n", a.Name, a.Size)
+	}
+	return exitOK
+}
+
 func cmdAttach(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 	fs := flags("attach", stderr)
 	page := fs.String("p", "", "attach to this page instead of today's journal")
 	only := fs.Bool("link-only", false, "copy the file into assets/ and print the link, writing no note")
+	clip := fs.Bool("clipboard", false, "attach the picture on the clipboard — a screenshot — instead of a file")
+	note := fs.Bool("note", false, "keep text as a linked .md file: the clipboard's, or stdin's with -")
+	title := fs.String("title", "", "with -note: the note's title (default its first line)")
 	asJSON := fs.Bool("json", false, "print what was attached as JSON")
 	migrate := fs.Bool("migrate", false, "copy every file notes link on the old att shelf into assets/ and relink it")
 	from := fs.String("from", "", "with -migrate: the old shelf (default ~/.att/store)")
@@ -379,8 +433,19 @@ func cmdAttach(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 		fmt.Fprintln(stderr, "tlog attach: -from and -dry-run only go with -migrate")
 		return exitUsage
 	}
-	if fs.NArg() == 0 {
-		fmt.Fprintln(stderr, "tlog attach: which file?")
+	if *note {
+		return attachNote(fs.Args(), stdout, stderr, svc, *page, *title, *only, *asJSON)
+	}
+	if *title != "" {
+		fmt.Fprintln(stderr, "tlog attach: -title only goes with -note")
+		return exitUsage
+	}
+	if *clip && fs.NArg() > 0 {
+		fmt.Fprintln(stderr, "tlog attach -clipboard: takes no files; it reads the clipboard")
+		return exitUsage
+	}
+	if !*clip && fs.NArg() == 0 {
+		fmt.Fprintln(stderr, "tlog attach: which file? (or -clipboard for a screenshot)")
 		return exitUsage
 	}
 
@@ -394,7 +459,17 @@ func cmdAttach(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 	}
 	var added []app.AttachView
 	var err error
-	if *only {
+	if *clip {
+		target := rel
+		if *only {
+			target = ""
+		}
+		var a app.AttachView
+		a, err = svc.AttachClipboard(target, time.Now())
+		if err == nil {
+			added = []app.AttachView{a}
+		}
+	} else if *only {
 		added, err = svc.Attach(fs.Args()...)
 	} else {
 		added, err = svc.AttachTo(rel, fs.Args()...)
@@ -611,6 +686,24 @@ func cmdPush(args []string, stdout, stderr io.Writer, svc *app.Service) int {
 		return fail(stderr, err)
 	}
 	fmt.Fprintln(stdout, "pushed")
+	return exitOK
+}
+
+// cmdPull brings in what another machine pushed. Pushing does this by itself
+// when the remote has moved; this is for reading the latest before writing.
+func cmdPull(args []string, stdout, stderr io.Writer, svc *app.Service) int {
+	fs := flags("pull", stderr)
+	if err := parseFlags(fs, args); err != nil {
+		return exitUsage
+	}
+	if !svc.Sync().Remote {
+		fmt.Fprintln(stderr, "tlog: no remote; set one with `tlog config git.remote <url>`")
+		return exitError
+	}
+	if err := svc.Pull(); err != nil {
+		return fail(stderr, err)
+	}
+	fmt.Fprintln(stdout, "up to date with", svc.Git.Remote())
 	return exitOK
 }
 
