@@ -13,6 +13,7 @@ type editor struct {
 	runes   []rune
 	cur     int
 	goalCol int
+	wrap    int // columns the window folds a line to; 0 is not at all
 
 	// The block's own undo, for typing that has not been written yet: a
 	// snapshot before each change, with a run of letters kept as one, so
@@ -191,37 +192,90 @@ func (e *editor) end() {
 
 // up moves to the previous line, keeping the column the cursor was aiming for.
 // It reports false at the first line so the caller can move to the block above.
-func (e *editor) up() bool {
-	start := e.lineStart(e.cur)
-	if start == 0 {
+func (e *editor) up() bool { return e.stepRow(-1) }
+
+// down moves to the next line, reporting false at the last line.
+func (e *editor) down() bool { return e.stepRow(1) }
+
+func (e *editor) stepRow(delta int) bool {
+	rows := e.visualRows()
+	i := rowAt(rows, e.cur) + delta
+	if i < 0 || i >= len(rows) {
 		return false
 	}
 	col := e.column()
-	prevStart := e.lineStart(start - 1)
-	prevEnd := start - 1
-	e.cur = min(prevStart+col, prevEnd)
+	e.cur = rows[i].place(col)
 	e.goalCol = col
 	return true
 }
 
-// down moves to the next line, reporting false at the last line.
-func (e *editor) down() bool {
-	end := e.lineEnd(e.cur)
-	if end >= len(e.runes) {
-		return false
+// visRow is one row of the screen: a line of the text, or the part of one that
+// fits when it is folded.
+type visRow struct {
+	start, end int
+	soft       bool // folded: end is the first rune of the next row
+}
+
+// place is the offset of a column in this row, clamped to what is there.
+func (r visRow) place(col int) int {
+	last := r.end
+	if r.soft {
+		last--
 	}
-	col := e.column()
-	nextStart := end + 1
-	nextEnd := e.lineEnd(nextStart)
-	e.cur = min(nextStart+col, nextEnd)
+	return max(r.start, min(r.start+col, last))
+}
+
+// visualRows is the text as the window lays it out, folded where softBreaks
+// folds it when it is drawn.
+func (e *editor) visualRows() []visRow {
+	var rows []visRow
+	for i := 0; ; {
+		end := e.lineEnd(i)
+		from := i
+		for _, br := range softBreaks(e.runes[i:end], e.wrap) {
+			rows = append(rows, visRow{from, i + br, true})
+			from = i + br
+		}
+		rows = append(rows, visRow{from, end, false})
+		if end >= len(e.runes) {
+			return rows
+		}
+		i = end + 1
+	}
+}
+
+// rowAt is the row holding an offset. An offset on a fold is the start of the
+// row after it.
+func rowAt(rows []visRow, cur int) int {
+	i := 0
+	for i+1 < len(rows) && rows[i+1].start <= cur {
+		i++
+	}
+	return i
+}
+
+// caretRow is the screen row of the caret, counted from the block's first.
+func (e *editor) caretRow() int { return rowAt(e.visualRows(), e.cur) }
+
+// arrive puts the caret on the block's first or last row, at a column clamped
+// to what is there, when ↑↓ has come in from another block. The column is kept
+// as the goal, so short lines on the way do not lose it.
+func (e *editor) arrive(lastLine bool, col int) {
+	rows := e.visualRows()
+	r := rows[0]
+	if lastLine {
+		r = rows[len(rows)-1]
+	}
+	col = max(0, col)
+	e.cur = r.place(col)
 	e.goalCol = col
-	return true
 }
 
 // column is the cursor's column, or the column it has been aiming for while
 // moving vertically past shorter lines.
 func (e *editor) column() int {
-	c := e.cur - e.lineStart(e.cur)
+	rows := e.visualRows()
+	c := e.cur - rows[rowAt(rows, e.cur)].start
 	if e.goalCol > c {
 		return e.goalCol
 	}
@@ -242,17 +296,11 @@ func (e *editor) lineEnd(i int) int {
 	return i
 }
 
-// setCaret puts the caret at a line and column, clamped to what is there, for
-// a mouse click.
-func (e *editor) setCaret(line, col int) {
-	i := 0
-	for ; line > 0 && i < len(e.runes); i++ {
-		if e.runes[i] == '\n' {
-			line--
-		}
-	}
-	end := e.lineEnd(i)
-	e.cur = i + max(0, min(col, end-i))
+// setCaret puts the caret at a screen row of the block and a column, clamped
+// to what is there, for a mouse click.
+func (e *editor) setCaret(row, col int) {
+	rows := e.visualRows()
+	e.cur = rows[min(row, len(rows)-1)].place(max(0, col))
 	e.goalCol = 0
 }
 

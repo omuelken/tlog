@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -201,8 +202,7 @@ func (m *Model) bodyLines() ([]string, int) {
 		if i == m.cur {
 			cursorLine = start
 			if editing {
-				line, _ := m.ed.cursorPos()
-				cursorLine = start + line
+				cursorLine = start + m.ed.caretRow()
 			}
 		}
 	}
@@ -211,6 +211,129 @@ func (m *Model) bodyLines() ([]string, int) {
 		m.lineRow, m.lineHits, m.lineFirst = append(m.lineRow, -1), append(m.lineHits, nil), append(m.lineFirst, 0)
 	}
 	return out, cursorLine
+}
+
+// wrapWidth is how many columns text starting at screen column textX may fill
+// in the window: zero, no limit, until the window's size is known. One column
+// is kept back for the caret's cell at the end of a full line.
+func (m *Model) wrapWidth(textX int) int {
+	if m.width <= 0 {
+		return 0
+	}
+	return max(10, m.width-textX-1)
+}
+
+// softBreaks says where a line of text is folded to fit in w columns: the rune
+// offsets at which each continuation starts. It folds after a space, or inside
+// a word too long to fit.
+func softBreaks(r []rune, w int) []int {
+	if w <= 0 || lipgloss.Width(string(r)) <= w {
+		return nil
+	}
+	var out []int
+	start, col, space := 0, 0, -1
+	for i := 0; i < len(r); i++ {
+		cw := lipgloss.Width(string(r[i]))
+		if col+cw > w && i > start {
+			at := i
+			switch {
+			case r[i] == ' ' && i+1 < len(r):
+				// The space that would overflow hangs past the edge, in the
+				// column kept back for the caret, so the word before it stays.
+				at = i + 1
+			case space > start:
+				at = space + 1
+			}
+			out = append(out, at)
+			start, col, space = at, 0, -1
+			i = at - 1
+			continue
+		}
+		if r[i] == ' ' {
+			space = i
+		}
+		col += cw
+	}
+	return out
+}
+
+// cutStyled cuts styled text at rune offsets of what is visible. Each piece
+// closes the styling it was in and the next opens it again, so a screen line
+// can be redrawn on its own.
+func cutStyled(s string, breaks []int) []string {
+	if len(breaks) == 0 {
+		return []string{s}
+	}
+	var out []string
+	var b strings.Builder
+	active := ""
+	n, next := 0, 0
+	for i := 0; i < len(s); {
+		if s[i] == 0x1b {
+			if seq := ansiRe.FindString(s[i:]); seq != "" && strings.HasPrefix(s[i:], seq) {
+				if seq == "\x1b[0m" || seq == "\x1b[m" {
+					active = ""
+				} else {
+					active += seq
+				}
+				b.WriteString(seq)
+				i += len(seq)
+				continue
+			}
+		}
+		if next < len(breaks) && n == breaks[next] {
+			if active != "" {
+				b.WriteString("\x1b[0m")
+			}
+			out = append(out, b.String())
+			b.Reset()
+			b.WriteString(active)
+			next++
+		}
+		_, size := utf8.DecodeRuneInString(s[i:])
+		b.WriteString(s[i : i+size])
+		i += size
+		n++
+	}
+	return append(out, b.String())
+}
+
+// wrapLine lays one line of a block out on the screen, folded to width: the
+// first piece after prefix, the rest after cont. plain is the visible text the
+// folds are worked out from. Links keep their place, and one that is folded is
+// clickable on both rows.
+func wrapLine(prefix, cont, body, plain string, hits []linkHit, width int) ([]string, [][]linkHit) {
+	runes := []rune(plain)
+	breaks := softBreaks(runes, width)
+	pieces := cutStyled(body, breaks)
+	shift := lipgloss.Width(prefix)
+	lines := make([]string, len(pieces))
+	spots := make([][]linkHit, len(pieces))
+	from := 0
+	for i, p := range pieces {
+		to := len(runes)
+		if i < len(breaks) {
+			to = breaks[i]
+		}
+		lo := lipgloss.Width(string(runes[:from]))
+		hi := lipgloss.Width(string(runes[:to]))
+		if i == len(pieces)-1 {
+			hi = int(^uint(0) >> 1)
+		}
+		lead := prefix
+		if i > 0 {
+			lead = cont
+		}
+		lines[i] = lead + p
+		for _, h := range hits {
+			if h.from < hi && h.to > lo {
+				h.from, h.to = max(h.from, lo)-lo+shift, min(h.to, hi)-lo+shift
+				spots[i] = append(spots[i], h)
+			}
+		}
+		from = to
+	}
+	return lines, spots
 }
 
 func (m *Model) renderRow(r row, selected, editing bool) []string {
@@ -259,6 +382,26 @@ func (m *Model) renderRowHits(r row, selected, editing bool) ([]string, [][]link
 
 	lines := strings.Split(text, "\n")
 
+	// What follows the first line's text wraps with it rather than running off
+	// the edge of the window.
+	var trail string
+	if r.block.Anchor != "" && !editing {
+		trail += " " + styleMuted.Render("^"+r.block.Anchor)
+	}
+	if due, ok := tapp.Deadline(r.block); ok && !editing {
+		style := styleMuted
+		if r.block.Task() != markdown.TaskDone {
+			switch dates.Status(due, time.Now()) {
+			case dates.Overdue:
+				style = styleError
+			case dates.Today:
+				style = styleTodo
+			}
+		}
+		trail += " " + style.Render("⏰ "+dates.Short(due))
+	}
+	width := m.wrapWidth(r.depth*2 + 2)
+
 	var out []string
 	var hits [][]linkHit
 	inFence := false
@@ -293,35 +436,25 @@ func (m *Model) renderRowHits(r row, selected, editing bool) ([]string, [][]link
 			body = m.renderEditLine(l, i)
 			lineHits = nil
 		}
-		shift := lipgloss.Width(prefix)
-		for j := range lineHits {
-			lineHits[j].from += shift
-			lineHits[j].to += shift
+		// The caret's cell at the end of a line is not part of the text, and
+		// the breaks must be the ones the arrows and the mouse work out.
+		plain := l
+		if !editing {
+			if i == 0 {
+				body += trail
+			}
+			plain = stripANSI(body)
 		}
-		out = append(out, prefix+body)
-		hits = append(hits, lineHits)
+		ls, hs := wrapLine(prefix, indent+"  ", body, plain, lineHits, width)
+		out = append(out, ls...)
+		hits = append(hits, hs...)
 	}
 
-	if r.block.Anchor != "" && !editing {
-		out[0] += " " + styleMuted.Render("^"+r.block.Anchor)
-	}
 	for _, p := range r.block.Props {
 		if tapp.IsDeadlineKey(p.Key) {
 			continue // shown beside the text instead, with how it stands
 		}
 		out = append(out, indent+"  "+styleProp.Render(p.Key+":: "+p.Value))
-	}
-	if due, ok := tapp.Deadline(r.block); ok && !editing {
-		style := styleMuted
-		if r.block.Task() != markdown.TaskDone {
-			switch dates.Status(due, time.Now()) {
-			case dates.Overdue:
-				style = styleError
-			case dates.Today:
-				style = styleTodo
-			}
-		}
-		out[0] += " " + style.Render("⏰ "+dates.Short(due))
 	}
 
 	if editing && m.comp != nil && m.comp.active {
@@ -348,20 +481,18 @@ func (m *Model) renderFenced(r row, text, indent, bullet string) ([]string, [][]
 	lines := strings.Split(text, "\n")
 	fi := 0
 	first := true
-	pushHits := func(s string, h []linkHit) {
+	width := m.wrapWidth(r.depth*2 + 2)
+	pushAt := func(s string, h []linkHit, w int) {
 		prefix := cont
 		if first {
 			prefix = indent + styleBullet.Render(bullet) + " "
 			first = false
 		}
-		shift := lipgloss.Width(prefix)
-		for j := range h {
-			h[j].from += shift
-			h[j].to += shift
-		}
-		out = append(out, prefix+s)
-		hits = append(hits, h)
+		ls, hs := wrapLine(prefix, cont, s, stripANSI(s), h, w)
+		out = append(out, ls...)
+		hits = append(hits, hs...)
 	}
+	pushHits := func(s string, h []linkHit) { pushAt(s, h, width) }
 	push := func(s string) { pushHits(s, nil) }
 
 	for i := 0; i < len(lines); i++ {
@@ -377,7 +508,7 @@ func (m *Model) renderFenced(r row, text, indent, bullet string) ([]string, [][]
 		}
 		if rows, ok := markdown.CSVTable(f.Lang, f.Body); ok && markdown.IsCSVLang(f.Lang) {
 			for _, l := range csvGrid(rows) {
-				push(l)
+				pushAt(l, nil, 0) // a table folded over is no longer a table
 			}
 			continue
 		}

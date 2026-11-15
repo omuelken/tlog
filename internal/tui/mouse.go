@@ -19,6 +19,9 @@ import (
 // in the rendered text afterwards.
 
 func (m *Model) mouse(msg tea.MouseMsg) {
+	if msg.Action == tea.MouseActionPress {
+		m.aiming = false
+	}
 	switch m.mode {
 	case modeOutline, modeMove, modeText:
 	case modePalette, modeSearch, modeLinks, modeBacklinks:

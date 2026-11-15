@@ -70,7 +70,7 @@ around with single letters; `enter` picks it back up.
 | `tab` / `shift+tab` | indent · outdent |
 | `alt+↑` `alt+↓` | move the block and its children |
 | `backspace` | at the start of a block: join it to the one above (an empty one goes) |
-| `↑ ↓ ← →` | move; they run on from one block into the next |
+| `↑ ↓ ← →` | move; they run on from one block into the next, and `↑ ↓` hold their column |
 | `@` | mention a page: the ones you write about most recently first, with their tags, then days; a new name makes a new page |
 | `[[` `((` `/` | link a page (the `]]` closes itself) · block reference · commands like `/todo` |
 | `ctrl+z` `ctrl+y` | undo, redo — typing a word at a time, then each thing written |

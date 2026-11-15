@@ -78,6 +78,11 @@ type Model struct {
 	ed      *editor
 	edBlock *markdown.Block
 
+	// A run of ↑↓ aims at one screen column, kept across blocks of different
+	// depth so the caret goes straight down the page.
+	goalX  int
+	aiming bool
+
 	collapsed map[string]bool
 
 	// feed is the journals page, nil on any other. While it is open, m.doc is
@@ -545,6 +550,9 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	k := msg.String()
+	if k != "up" && k != "down" {
+		m.aiming = false
+	}
 
 	// Completion intercepts navigation keys while it is open.
 	if m.mode == modeOutline && m.ed != nil && m.comp != nil && m.comp.active {
@@ -810,9 +818,9 @@ func (m *Model) outlineKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 	if m.ed == nil {
 		switch k {
 		case "up":
-			m.moveCursor(-1)
+			m.stepLine(-1)
 		case "down":
-			m.moveCursor(1)
+			m.stepLine(1)
 		case "enter":
 			m.activateRow()
 		case "esc":
@@ -917,12 +925,12 @@ func (m *Model) typingKey(msg tea.KeyMsg, k string) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "up":
 		if !m.ed.up() {
-			m.moveCursor(-1)
+			m.stepLine(-1)
 		}
 		return m, nil
 	case "down":
 		if !m.ed.down() {
-			m.moveCursor(1)
+			m.stepLine(1)
 		}
 		return m, nil
 	}
@@ -969,6 +977,34 @@ func (m *Model) moveCursor(delta int) {
 	m.nearEnd()
 	m.syncEditor()
 }
+
+// stepLine is ↑ or ↓ running off the edge of a block: the caret lands on the
+// nearest line of the next block, in the same screen column. Screen, not text,
+// because blocks sit at different depths; the window does the same with goalX.
+func (m *Model) stepLine(delta int) {
+	caret, from := 0, m.cur
+	if m.ed != nil {
+		caret = m.ed.cur
+		if !m.aiming {
+			m.goalX, m.aiming = m.textX()+m.ed.column(), true
+		}
+	}
+	m.moveCursor(delta)
+	if m.ed == nil {
+		return
+	}
+	if m.cur == from { // the top or bottom of the page: nowhere to go
+		m.ed.cur = min(caret, len(m.ed.runes))
+		return
+	}
+	if m.aiming {
+		m.ed.arrive(delta < 0, m.goalX-m.textX())
+	}
+}
+
+// textX is the screen column where the text of the row under the cursor
+// starts, after its indent and bullet.
+func (m *Model) textX() int { return m.rows[m.cur].depth*2 + 2 }
 
 // undoFile takes back the last thing written, or puts back the last thing
 // taken back. If it was on another page, that page is where you end up, so the
@@ -1271,6 +1307,7 @@ func (m *Model) attach(caret int) {
 	}
 	m.edBlock = b
 	m.ed = newEditor(b.Text)
+	m.ed.wrap = m.wrapWidth(m.textX())
 	if caret >= 0 {
 		m.ed.cur = max(0, min(caret, len(m.ed.runes)))
 	}
@@ -1281,6 +1318,9 @@ func (m *Model) attach(caret int) {
 // block under the cursor is the block being edited. It runs after every
 // message, so a path that moves the cursor cannot leave the editor behind.
 func (m *Model) syncEditor() {
+	if m.ed != nil && m.cur >= 0 && m.cur < len(m.rows) {
+		m.ed.wrap = m.wrapWidth(m.textX()) // the window or the indent may have changed
+	}
 	if m.mode != modeOutline || m.doc == nil {
 		return
 	}
