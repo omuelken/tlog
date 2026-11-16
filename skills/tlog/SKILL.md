@@ -91,6 +91,7 @@ tlog undo [rel]                                  # the last thing tlog committed
 Every write is committed to git by tlog itself. Text may be `-` to read it
 from standard input, which is how a block of several lines goes in. Flags go
 before or after the arguments; put `--` before text that starts with a dash.
+`tlog <command> -h` prints that command's usage and runs nothing.
 
 ## Before you write a date or a name
 

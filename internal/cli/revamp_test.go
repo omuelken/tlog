@@ -600,3 +600,75 @@ func TestAttachNoteFromStdin(t *testing.T) {
 		t.Fatalf("a file with -note should be a usage error: %d %q", code, errs)
 	}
 }
+
+// snapshot is every note in a directory, by path, so a test can tell that a
+// command wrote nothing at all.
+func snapshot(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	got := map[string]string{}
+	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && d.Name() == ".git" {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() {
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			got[p] = string(b)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+// Asking a command for help once ran it with "-h" as an argument: open made a
+// page called -h, add wrote "- -h" into the journal, and import went to
+// ~/logseq and put the old text back over every note it had once written.
+func TestHelpRunsNothing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, "logseq", "journals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "logseq", "journals", "2026_01_01.md"), []byte("- from logseq\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	seed(t, dir)
+	before := snapshot(t, dir)
+	for _, args := range [][]string{
+		{"import", "-h"}, {"import", "--help"}, {"add", "-h"}, {"add", "some text", "-help"},
+		{"open", "-h"}, {"edit", "-h"}, {"append", "journals/x.md", "-h"},
+		{"block", "-h"}, {"tag", "person", "-h"}, {"undo", "-h"}, {"push", "-h"},
+	} {
+		code, out, errs := runCLI(t, dir, args...)
+		if code != exitOK || !strings.Contains(out, "tlog "+args[0]) {
+			t.Errorf("%v: code=%d out=%q err=%q", args, code, out, errs)
+		}
+	}
+	after := snapshot(t, dir)
+	if len(after) != len(before) {
+		t.Fatalf("files appeared: %d before, %d after", len(before), len(after))
+	}
+	for p, b := range before {
+		if after[p] != b {
+			t.Errorf("%s changed: %q", p, after[p])
+		}
+	}
+
+	// After -- it is text like any other.
+	if code, _, errs := runCLI(t, dir, "add", "--", "-h"); code != exitOK {
+		t.Fatalf("%d %s", code, errs)
+	}
+	if body := read(t, dir, "journals"); !strings.Contains(body, "- -h\n") {
+		t.Fatalf("got %q", body)
+	}
+}

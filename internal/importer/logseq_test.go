@@ -244,3 +244,39 @@ func TestImportRefusesToWriteIntoTheSourceGraph(t *testing.T) {
 		t.Fatalf("the source graph was modified: %q", data)
 	}
 }
+
+// A second import over notes written since the first must not put the old
+// Logseq text back. It creates what is missing and leaves the rest alone.
+func TestImportNeverReplacesANote(t *testing.T) {
+	src, dst := setup(t)
+	writeSrc(t, src, "journals/2026_09_15.md", "- a note\n")
+	if _, err := Run(dst, Options{Source: src}); err != nil {
+		t.Fatal(err)
+	}
+	if err := dst.Write("journals/2026-09-15.md", []byte("- a note\n- written in tlog since\n"), ""); err != nil {
+		t.Fatal(err)
+	}
+	writeSrc(t, src, "pages/New.md", "- new in logseq\n")
+
+	for _, dry := range []bool{true, false} {
+		rep, err := Run(dst, Options{Source: src, DryRun: dry})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rep.Kept) != 1 || rep.Kept[0] != "journals/2026-09-15.md" {
+			t.Fatalf("dry=%v kept: %v", dry, rep.Kept)
+		}
+		if len(rep.Written) != 1 || rep.Written[0] != "pages/New.md" {
+			t.Fatalf("dry=%v written: %v", dry, rep.Written)
+		}
+		if !strings.Contains(rep.String(), "1 files already in the notes were left as they are") {
+			t.Fatalf("report: %s", rep.String())
+		}
+	}
+	if got := read(t, dst, "journals/2026-09-15.md"); got != "- a note\n- written in tlog since\n" {
+		t.Fatalf("the note was replaced: %q", got)
+	}
+	if got := read(t, dst, "pages/New.md"); got != "- new in logseq\n" {
+		t.Fatalf("the new page was not created: %q", got)
+	}
+}

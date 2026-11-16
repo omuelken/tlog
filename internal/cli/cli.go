@@ -106,6 +106,14 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		cmd, rest = rest[0], rest[1:]
 	}
 
+	// Asking for help is answered before anything is opened, so it can never
+	// be taken for an argument: `tlog open -h` once made a page called -h, and
+	// `tlog import -h` ran a whole import.
+	if asksForHelp(rest) {
+		fmt.Fprint(stdout, helpFor(cmd))
+		return exitOK
+	}
+
 	svc, err := app.New(dir)
 	if err != nil {
 		fmt.Fprintf(stderr, "tlog: %v\n", err)
@@ -164,6 +172,48 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stderr, "tlog: unknown command %q\n\n%s", cmd, usage)
 	return exitUsage
+}
+
+// asksForHelp reports whether -h, -help or --help appears among a command's
+// arguments, anywhere before a "--". Flags may come on either side of the
+// arguments, so help may too; after "--" a "-h" is text like any other.
+func asksForHelp(args []string) bool {
+	for _, a := range args {
+		switch a {
+		case "--":
+			return false
+		case "-h", "-help", "--help":
+			return true
+		}
+	}
+	return false
+}
+
+// helpFor is a command's own lines out of the usage, so that there is only
+// one place describing what each command does. A command the usage does not
+// list gets all of it.
+func helpFor(cmd string) string {
+	if cmd == "" || cmd == "help" {
+		return usage
+	}
+	var lines []string
+	prefix := "  tlog " + cmd
+	all := strings.Split(usage, "\n")
+	for i, l := range all {
+		if l != prefix && !strings.HasPrefix(l, prefix+" ") {
+			continue
+		}
+		lines = append(lines, l)
+		// A command whose description did not fit carries it on the next,
+		// deeper-indented line.
+		if i+1 < len(all) && strings.HasPrefix(all[i+1], "        ") {
+			lines = append(lines, all[i+1])
+		}
+	}
+	if len(lines) == 0 {
+		return usage
+	}
+	return "usage:\n" + strings.Join(lines, "\n") + "\n"
 }
 
 // run executes an operation and flushes the auto-commit, so that a one-shot

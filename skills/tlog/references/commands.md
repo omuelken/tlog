@@ -3,7 +3,8 @@
 `tlog help` and `tlog block help` print the authoritative short form. This is
 the long form, grouped by what you are trying to do. Every command below takes
 `-json`; flags may be written before or after the arguments; a word after `--`
-is never a flag. `-dir <path>` before the command picks a notes directory
+is never a flag. `-h`, `-help` or `--help` anywhere before a `--` prints the
+command's usage, exits 0 and runs nothing. `-dir <path>` before the command picks a notes directory
 other than `$TLOG_DIR` / `~/notes`.
 
 ## Finding things

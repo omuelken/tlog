@@ -13,6 +13,7 @@
 package importer
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -66,6 +67,10 @@ type Report struct {
 	Tagged       int
 	Skipped      []string
 	Written      []string
+	// Kept lists files the notes already had. The import never replaces one:
+	// a second run over a graph you have since written in would otherwise put
+	// the old Logseq text back over your notes.
+	Kept []string
 }
 
 // String renders a human summary.
@@ -82,6 +87,9 @@ func (r *Report) String() string {
 	}
 	if r.RefsDangling > 0 {
 		fmt.Fprintf(&sb, "%d references pointed at blocks that no longer exist and were left as written\n", r.RefsDangling)
+	}
+	if len(r.Kept) > 0 {
+		fmt.Fprintf(&sb, "%d files already in the notes were left as they are\n", len(r.Kept))
 	}
 	for _, s := range r.Skipped {
 		fmt.Fprintf(&sb, "skipped: %s\n", s)
@@ -203,13 +211,29 @@ func Run(dst *store.Store, opt Options) (*Report, error) {
 			rep.Empty++
 			continue
 		}
-		rep.Written = append(rep.Written, p.rel)
-		if opt.DryRun {
+		// Only ever create. The write carries the hash of the file as it was
+		// just read — the hash of nothing — so a file that appears between the
+		// read and the write is refused too, and kept.
+		cur, err := dst.Read(p.rel)
+		if err != nil {
+			return rep, fmt.Errorf("reading %s: %w", p.rel, err)
+		}
+		if len(cur.Data) > 0 {
+			rep.Kept = append(rep.Kept, p.rel)
 			continue
 		}
-		if err := dst.Write(p.rel, out, ""); err != nil {
+		if opt.DryRun {
+			rep.Written = append(rep.Written, p.rel)
+			continue
+		}
+		var conflict *store.ErrConflict
+		if err := dst.Write(p.rel, out, cur.Hash); errors.As(err, &conflict) {
+			rep.Kept = append(rep.Kept, p.rel)
+			continue
+		} else if err != nil {
 			return rep, fmt.Errorf("writing %s: %w", p.rel, err)
 		}
+		rep.Written = append(rep.Written, p.rel)
 	}
 	return rep, nil
 }

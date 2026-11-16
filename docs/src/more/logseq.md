@@ -12,8 +12,11 @@ tlog import -from ~/logseq             # write into the notes folder, then commi
 ```
 
 **Your Logseq graph is only read.** tlog cannot change, move or delete it, and
-the import refuses to run if the destination overlaps the source. You can
-repeat it as often as you like and keep using Logseq until you are sure.
+the import refuses to run if the destination overlaps the source. It only
+ever creates files: a note already in the notes folder is left as it is and
+counted in the report, so repeating the import never puts old Logseq text
+back over what you wrote in tlog. You can repeat it as often as you like and
+keep using Logseq until you are sure.
 
 The conversion is one-way: notes you then write in tlog do not flow back.
 

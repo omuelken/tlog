@@ -709,10 +709,12 @@ writes them as `tags:` frontmatter. It needs `sqlite3` on PATH; without it the
 import says so and proceeds untagged.
 
 **Your Logseq graph is only ever read.** tlog cannot modify, move or delete it,
-so importing is safe to repeat as often as you like, and the import refuses
-outright if the destination overlaps the source. What is one-way is the
-*conversion*: there is no converter back, so notes you write in tlog will not
-appear in Logseq. Keep using Logseq until you decide to stop.
+and the import refuses outright if the destination overlaps the source. It
+only ever creates files: a note the notes directory already has is left as it
+is and counted in the report, so importing is safe to repeat as often as you
+like and never puts old Logseq text back over what you wrote in tlog. What is
+one-way is the *conversion*: there is no converter back, so notes you write in
+tlog will not appear in Logseq. Keep using Logseq until you decide to stop.
 
 ## Development
 
