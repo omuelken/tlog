@@ -85,12 +85,12 @@ func TestClickingABlockPutsTheCaretThere(t *testing.T) {
 	send(t, m, k(tea.KeyEsc)) // moving: a click highlights, it does not write
 	m.View()
 
-	m.Update(clickAt(4, 2)) // "se|cond"
+	m.Update(clickAt(4, 3)) // "se|cond", below the gap
 	if m.cur != 1 || m.mode != modeMove || m.ed != nil {
 		t.Fatalf("a click while moving should only highlight: row %d mode %v", m.cur, m.mode)
 	}
 	m.View()
-	m.Update(clickAt(4, 2)) // the highlighted block again: write here
+	m.Update(clickAt(4, 3)) // the highlighted block again: write here
 	if m.mode != modeOutline || m.ed == nil || m.ed.cur != 2 {
 		t.Fatalf("a second click should start writing at the click: mode %v", m.mode)
 	}

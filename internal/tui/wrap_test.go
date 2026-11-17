@@ -94,7 +94,7 @@ func TestALongBlockFoldsToTheWindowAndFollowsItsSize(t *testing.T) {
 	m := treeModel(t, "- "+longBlock+"\n\n- short\n")
 	resize(m, 20)
 	lines, _ := m.bodyLines()
-	if len(lines) != 4 { // three for the long block, one for short
+	if len(lines) != 5 { // three for the long block, the gap, one for short
 		t.Fatalf("got %d lines: %q", len(lines), lines)
 	}
 	var text []string
@@ -109,7 +109,7 @@ func TestALongBlockFoldsToTheWindowAndFollowsItsSize(t *testing.T) {
 	}
 
 	resize(m, 80)
-	if lines, _ = m.bodyLines(); len(lines) != 2 {
+	if lines, _ = m.bodyLines(); len(lines) != 3 {
 		t.Fatalf("widening the window did not unfold: %q", lines)
 	}
 }
@@ -209,5 +209,30 @@ func TestAFoldedLinkIsClickableOnBothRows(t *testing.T) {
 	}
 	if h := hits[1][0]; h.from != 2 || h.to != 4 {
 		t.Fatalf("second row: %v", h)
+	}
+}
+
+// The screen is laid out the way the file is: with format.blank_lines on, an
+// empty line comes before each top-level block after the first, and never
+// between a block and its children. A click on the gap selects nothing.
+func TestTopLevelBlocksHaveAGapAboveThem(t *testing.T) {
+	m := treeModel(t, "- one\n  - child\n\n- two\n\n- three\n")
+	resize(m, 80)
+	lines, _ := m.bodyLines()
+	var plain []string
+	for _, l := range lines {
+		plain = append(plain, strings.TrimSpace(stripANSI(l)))
+	}
+	want := []string{"▾ one", "• child", "", "• two", "", "• three"}
+	if strings.Join(plain, "|") != strings.Join(want, "|") {
+		t.Fatalf("got %q", plain)
+	}
+	if m.lineRow[2] != -1 || m.lineRow[3] != 2 {
+		t.Fatalf("the gap belongs to a row: %v", m.lineRow)
+	}
+
+	m.svc.Cfg.Format.BlankLines = false
+	if lines, _ = m.bodyLines(); len(lines) != 4 {
+		t.Fatalf("with the setting off: %q", lines)
 	}
 }

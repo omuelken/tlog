@@ -273,6 +273,14 @@ function ok(label, cond, detail) {
   ok("the outline is drawn", $("outline").children.length > 0);
   ok("the sidebar is filled", $("pages").children.length === 2);
 
+  // format.blank_lines (on by default): a gap above each top-level block after
+  // the first, never above a child, the way the file is laid out.
+  const tops = [...$("outline").querySelectorAll(".block")].map((b) => b.classList.contains("top"));
+  ok("top-level blocks after the first are spaced, children are not",
+    tops.length >= 3 && tops[0] === false && tops[1] === false && tops[2] === true, JSON.stringify(tops));
+  ok("the spacing follows format.blank_lines",
+    w.document.documentElement.classList.contains("blank-lines"));
+
   // `startup = last` is a setting in all three menus. The window called
   // TodayJournal at launch, which always opens today, so the setting did
   // nothing here while the outliner honoured it.

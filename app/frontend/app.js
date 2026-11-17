@@ -545,11 +545,16 @@ function renderBlocks(out, pv) {
   }
 
   const hidden = hiddenUnder(rel, pv.blocks);
+  let first = true;
 
   pv.blocks.forEach((b) => {
     if (hidden.has(b.offset)) return;
     const row = document.createElement("div");
-    row.className = "block" + (b.task === "done" ? " done" : "");
+    // A top-level block after the first is marked, so that format.blank_lines
+    // can space the page the way the file is spaced.
+    const top = b.depth === 0 && !first;
+    first = false;
+    row.className = "block" + (top ? " top" : "") + (b.task === "done" ? " done" : "");
     row.style.marginLeft = b.depth * 22 + "px";
 
     if (b.task) {
@@ -2285,6 +2290,7 @@ async function saveSetting(key, value) {
   const res = await call(() => api().SetSetting(key, value));
   if (!res) return openSettings(); // a refused value: show what it really is
   applyFontSize(res.settings);
+  applyBlankLines(res.settings);
   drawSettings(res.settings, res.note ? "Gespeichert — " + res.note : "Gespeichert");
 }
 
@@ -2294,6 +2300,13 @@ function applyFontSize(items) {
   const s = (items || []).find((it) => it.key === "app.font_size");
   const n = s ? parseInt(s.value, 10) : 0;
   if (n > 0) document.documentElement.style.fontSize = n + "px";
+}
+
+// applyBlankLines puts a gap above each top-level block when format.blank_lines
+// is on, as the outliner does, so the page looks like the file it shows.
+function applyBlankLines(items) {
+  const s = (items || []).find((it) => it.key === "format.blank_lines");
+  document.documentElement.classList.toggle("blank-lines", !s || s.value === "true");
 }
 
 $("gear").onclick = openSettings;
@@ -3173,7 +3186,9 @@ window.addEventListener("focus", applyTheme);
 
 (async function start() {
   await applyTheme();
-  applyFontSize(await call(() => api().Settings()));
+  const settings = await call(() => api().Settings());
+  applyFontSize(settings);
+  applyBlankLines(settings);
   const root = await call(() => api().Root());
   if (root) $("rootpath").textContent = root;
   const journals = await call(() => api().JournalsRel());

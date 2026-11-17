@@ -28,7 +28,7 @@ there is. Your values are kept; comments you add by hand are not.
 | `git.remote` | where pushing goes ¹ |
 | `watch.enabled` | notice edits made in another editor. Takes effect at the next start. |
 | `watch.interval` | how often the notes folder is checked |
-| `format.blank_lines` | a blank line between top-level blocks in the files ² |
+| `format.blank_lines` | a blank line between top-level blocks in the files, and a gap above each one in the outliner and the app ² |
 | `deadline.property` | whether a deadline is written as `Deadline::` or `due::` |
 | `dates.end_of_week` | what `eow` means: friday or sunday |
 | `app.font_size` | text size in the desktop app, in pixels; the outliner uses the terminal's font |

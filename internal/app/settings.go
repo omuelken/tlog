@@ -67,7 +67,7 @@ func (s *Service) Settings() []Setting {
 
 		{"format.blank_lines", boolStr(c.Format.BlankLines), "bool",
 			"A blank line between top-level blocks",
-			"reformats each file the next time it is written", "config"},
+			"reformats each file the next time it is written; the outliner and the app space the outline the same way", "config"},
 		{"deadline.property", c.Deadline.Property, "text",
 			"The property a deadline is written to",
 			"reading accepts any casing, and due as well", "config"},

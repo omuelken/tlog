@@ -190,6 +190,12 @@ func (m *Model) bodyLines() ([]string, int) {
 	m.lineRow, m.lineHits, m.lineFirst = m.lineRow[:0], m.lineHits[:0], m.lineFirst[:0]
 
 	for i, r := range m.rows {
+		if m.gapBefore(i) {
+			out = append(out, "")
+			m.lineRow = append(m.lineRow, -1)
+			m.lineHits = append(m.lineHits, nil)
+			m.lineFirst = append(m.lineFirst, len(out)-1)
+		}
 		editing := m.ed != nil && m.edBlock == r.block
 		start := len(out)
 		lines, hits := m.renderRowHits(r, i == m.cur || m.inSelection(i), editing)
@@ -211,6 +217,19 @@ func (m *Model) bodyLines() ([]string, int) {
 		m.lineRow, m.lineHits, m.lineFirst = append(m.lineRow, -1), append(m.lineHits, nil), append(m.lineFirst, 0)
 	}
 	return out, cursorLine
+}
+
+// gapBefore reports whether an empty line goes above row i: before each
+// top-level block that follows another block, the way format.blank_lines lays
+// the file out. A day's heading or a section already starts a group of its
+// own, so the first block under one gets no gap. The empty line belongs to no
+// row, so a click on it lands nowhere.
+func (m *Model) gapBefore(i int) bool {
+	if !m.svc.Cfg.Format.BlankLines || i == 0 {
+		return false
+	}
+	r, prev := m.rows[i], m.rows[i-1]
+	return r.kind == rowBlock && r.depth == 0 && (prev.kind == rowBlock || prev.kind == rowEmbed)
 }
 
 // wrapWidth is how many columns text starting at screen column textX may fill

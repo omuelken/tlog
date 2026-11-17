@@ -293,6 +293,8 @@ html, body {
 #outline { padding: 10px 0 0; }
 
 .block { display: flex; align-items: flex-start; gap: 6px; }
+/* format.blank_lines: the gap the file has between top-level blocks. */
+.blank-lines .block.top { margin-top: 0.9em; }
 .block .bullet {
   flex: none;
   width: 14px;
