@@ -153,6 +153,13 @@ func (s *Service) Load(rel string) (*Doc, error) {
 func (s *Service) Save(d *Doc) error {
 	normalizeDates(d.Doc, time.Now())
 	out := markdown.Render(d.Doc)
+	if len(out) == 0 && s.linkedTo(d.Rel) {
+		// The store removes a file written empty. A page something still
+		// links to is kept, as one blank bullet, so its linked references
+		// stay a page to open rather than a name that has to be made again.
+		d.Doc.AppendChild(nil, &markdown.Block{})
+		out = markdown.Render(d.Doc)
+	}
 	if markdown.Hash(out) == d.Hash {
 		return nil // the file on disk already says exactly this
 	}
@@ -171,6 +178,17 @@ func (s *Service) Save(d *Doc) error {
 	d.Hash = markdown.Hash(out)
 	s.Git.Touch(d.Rel)
 	return nil
+}
+
+// linkedTo reports whether any other file refers to this one. The graph is
+// built only when a file is about to be emptied, so an ordinary save costs
+// nothing more.
+func (s *Service) linkedTo(rel string) bool {
+	g, err := graph.Build(s.Store)
+	if err != nil {
+		return true // cannot tell: keeping a blank page is the safe mistake
+	}
+	return len(g.Backlinks(store.Title(rel))) > 0
 }
 
 // Commit flushes any pending auto-commit immediately, pushing too when this
