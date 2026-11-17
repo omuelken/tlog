@@ -41,6 +41,10 @@ You do not "create" pages. One appears when you
 Until you write on the page itself, there is not even a file for it. It exists
 because something points at it.
 
+Deleting everything on a page removes its file only when nothing links to it.
+A page that is still linked keeps its file, as one blank bullet, with
+everything that mentions it listed below.
+
 ## Which to use
 
 | You are… | Write it |

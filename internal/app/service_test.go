@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -548,5 +549,34 @@ func TestSearchViaTheCore(t *testing.T) {
 	// The hit must be directly usable as an address.
 	if _, err := s.SetText(Addr{Rel: hits[0].Rel, Offset: hits[0].Offset, Hash: hits[0].Hash}, "decided"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Deleting the last block of a page removes the file, unless something links
+// to the page: then it stays, as one blank bullet, so its linked references
+// are still a page to open.
+func TestAnEmptiedPageStaysWhileSomethingLinksToIt(t *testing.T) {
+	s := newSvc(t)
+	if err := s.Store.Write("journals/2026-11-12.md", []byte("- Treffen [[Linked]]\n"), ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Linked", "Lonely"} {
+		rel := "pages/" + name + ".md"
+		if err := s.Store.Write(rel, []byte("- only block\n"), ""); err != nil {
+			t.Fatal(err)
+		}
+		d, err := s.Load(rel)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.DeleteBlock(Addr{Rel: rel, Offset: 0, Hash: d.Hash}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := body(t, s, "pages/Linked.md"); got != "-\n" {
+		t.Fatalf("a linked page should be kept as one blank bullet: %q", got)
+	}
+	if _, err := os.Stat(s.Store.Abs("pages/Lonely.md")); !os.IsNotExist(err) {
+		t.Fatal("a page nothing links to should be removed once it is empty")
 	}
 }
