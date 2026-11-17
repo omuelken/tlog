@@ -157,3 +157,31 @@ func TestColonOpensThePalette(t *testing.T) {
 		t.Fatalf("mode %v", m.mode)
 	}
 }
+
+// p puts what was copied on the row below the cursor, at that row's indent:
+// under a block whose children are shown, that is its first child, not the
+// place after everything under it. A folded block shows nothing under it, so
+// there the paste goes after it, as it does after a block with no children.
+func TestPUnderAnOpenBlockBecomesItsFirstChild(t *testing.T) {
+	fakeClip = ""
+	m := treeModel(t, "- a\n  - a1\n- b\n  - b1\n")
+	moving(t, m, "b")
+	send(t, m, runes("y"), runes("y"))
+	cursorTo(t, m, "a")
+	send(t, m, runes("p"))
+	if got := flat(t, m, m.doc.Rel); got != "- a\n  - b\n    - b1\n  - a1\n- b\n  - b1\n" {
+		t.Fatalf("under an open block: %q", got)
+	}
+	if m.current() == nil || m.current().Text != "b" || m.current().Parent == nil {
+		t.Fatal("the cursor should be on what was pasted")
+	}
+
+	m = treeModel(t, "- a\n  - a1\n- b\n")
+	collapseBlock(t, m, 0)
+	moving(t, m, "a")
+	send(t, m, runes("y"), runes("y"))
+	send(t, m, runes("p"))
+	if got := flat(t, m, m.doc.Rel); got != "- a\n  - a1\n- a\n  - a1\n- b\n" {
+		t.Fatalf("after a folded block: %q", got)
+	}
+}

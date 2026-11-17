@@ -41,7 +41,7 @@ are moving.
 | `o` · `O` | a new block below · above, and write in it |
 | `x` · `space` | tick the task off, or make the block one |
 | `dd` · `yy` | cut · copy the block and everything under it |
-| `p` · `P` | paste below · above: an outline as blocks, other text as one block |
+| `p` · `P` | paste below · above: an outline as blocks, other text as one block. Below a block whose children are shown means its first child, at their indent |
 | `V` | select blocks: `j` `k` grow it, `y` copy, `d` cut, `>` `<` indent, `esc` stop |
 | `v` | select text in the block: `h l w b e 0 $` move, `y` copy, `d` cut, `c` change, `p` paste, `x` one character, `i` write |
 | `g` | follow the link in this block |

@@ -95,7 +95,7 @@ around with single letters; `enter` picks it back up.
 | `x` | toggle the task checkbox |
 | `dd` / `yy` | cut · copy the block and everything in it |
 | `V` | select blocks: `j k` grow it, `y` copy, `d` cut, `>` `<` indent, `esc` stop |
-| `p` / `P` | paste below · above; an outline as blocks, other text as one block |
+| `p` / `P` | paste below · above; an outline as blocks, other text as one block. Below an open block with children is its first child |
 | `v` | select text inside the block: `h l w b e 0 $` move, `y` copy, `d` cut, `c` change, `p` paste, `x` one character, `i` write; `esc` back |
 | `z` / `h` `l` | fold · unfold |
 | `a` | agenda: open tasks, deadlines first, then those without a date — `space` ticks off, `a` adds what is done, newest first |

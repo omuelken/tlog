@@ -318,4 +318,17 @@ func TestCopyAndPasteFromAScript(t *testing.T) {
 	if code, _, _ := runCLI(t, dir, "block", addr, "paste", "- three"); code != exitStale {
 		t.Fatalf("a paste from a stale read: exit %d", code)
 	}
+	// -child puts it under the block, ahead of what is already there.
+	code, out, errs = runCLI(t, dir, "block", two, "paste", "-child", "- first under two")
+	if code != 0 {
+		t.Fatalf("paste -child: %d %s", code, errs)
+	}
+	code, out, errs = runCLI(t, dir, "block", strings.TrimSpace(out), "copy")
+	if code != 0 || out != "- first under two\n" {
+		t.Fatalf("paste -child printed the wrong address: %d %q %s", code, out, errs)
+	}
+	code, out, _ = runCLI(t, dir, "block", firstAddr(t, dir, "two"), "copy")
+	if code != 0 || out != "- two\n  - first under two\n  - under two\n" {
+		t.Fatalf("after paste -child: %q", out)
+	}
 }

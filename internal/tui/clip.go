@@ -147,7 +147,9 @@ func (m *Model) cutBlocks() {
 }
 
 // put pastes below the block under the cursor, or above it: whole blocks as
-// blocks, and text copied elsewhere as a block of its own.
+// blocks, and text copied elsewhere as a block of its own. Below means the
+// row below, at its indent: under a block whose children are shown, the paste
+// becomes its first child rather than going after everything under it.
 func (m *Model) put(before bool) {
 	reg, ok := m.pasteText()
 	if !ok {
@@ -167,7 +169,11 @@ func (m *Model) putText(text string, before bool) {
 	if !m.onDisk(m.docOf(b)) {
 		return
 	}
-	if m.apply(m.svc.PasteBlocks(m.addrOf(b), text, before)) {
+	paste := func() (*app.Result, error) { return m.svc.PasteBlocks(m.addrOf(b), text, before) }
+	if !before && len(b.Children) > 0 && !m.collapsed[m.rows[m.cur].path] {
+		paste = func() (*app.Result, error) { return m.svc.PasteChildren(m.addrOf(b), text) }
+	}
+	if m.apply(paste()) {
 		m.status = "pasted " + blocksIn(text)
 	}
 }

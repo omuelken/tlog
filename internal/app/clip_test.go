@@ -113,6 +113,31 @@ func TestPastingPutsTheOutlineBackAsBlocks(t *testing.T) {
 	}
 }
 
+func TestPastingAsChildrenGoesUnderTheBlockFirst(t *testing.T) {
+	s := newSvc(t)
+	rel, hash, at := page(t, s, "- a\n  - a1\n- b\n")
+	res, err := s.PasteChildren(Addr{Rel: rel, Offset: at["a"], Hash: hash}, "- x\n  - x1\n- y\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := onDiskNow(t, s, rel); got != "- a\n  - x\n    - x1\n  - y\n  - a1\n- b\n" {
+		t.Fatalf("under a block with children: %q", got)
+	}
+	if d, _ := s.Load(rel); d.Doc.FindByOffset(res.Offset).Text != "x" {
+		t.Fatal("the result should be the first block pasted")
+	}
+
+	// Under a block with nothing under it yet, and an empty one is kept: it
+	// is a parent now.
+	rel, hash, at = page(t, s, "- \n- b\n")
+	if _, err := s.PasteChildren(Addr{Rel: rel, Offset: at[""], Hash: hash}, "- z\n"); err != nil {
+		t.Fatal(err)
+	}
+	if got := onDiskNow(t, s, rel); got != "-\n  - z\n- b\n" {
+		t.Fatalf("under an empty block: %q", got)
+	}
+}
+
 func TestPastingPlainTextMakesOneBlock(t *testing.T) {
 	s := newSvc(t)
 	rel, hash, at := page(t, s, "- a\n")

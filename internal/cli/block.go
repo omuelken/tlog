@@ -37,8 +37,10 @@ const blockUsage = `tlog block <addr> [operation]
   cmd <name> [arg]         any slash command by name — see: tlog commands
   ref                      give it a durable name and print a link to it
   copy                     print it and everything under it as outline markdown
-  paste [-before] <text>   add outline markdown as blocks below it, or above;
-                           nested bullets stay nested, plain text is one block
+  paste [-before|-child] <text>
+                           add outline markdown as blocks below it, above it,
+                           or as its first children; nested bullets stay
+                           nested, plain text is one block
   delete                   remove it and everything under it
 
 Text may be "-" to read it from standard input, for a block of several lines.
@@ -150,8 +152,8 @@ func applyBlockOp(svc *app.Service, a app.Addr, op string, args []string, stderr
 		fmt.Fprintf(stderr, "tlog block: "+format+"\n", v...)
 		return nil, exitUsage
 	}
-	// -child may be written before the text of after and split, -before
-	// before the text of paste.
+	// -child may be written before the text of after, split and paste,
+	// -before before the text of paste.
 	asChild, before := false, false
 	if len(args) > 0 && (args[0] == "-child" || args[0] == "--child") {
 		asChild, args = true, args[1:]
@@ -234,7 +236,11 @@ func applyBlockOp(svc *app.Service, a app.Addr, op string, args []string, stderr
 		if !ok {
 			return nil, exitUsage
 		}
-		res, err = svc.PasteBlocks(a, t, before)
+		if asChild {
+			res, err = svc.PasteChildren(a, t)
+		} else {
+			res, err = svc.PasteBlocks(a, t, before)
+		}
 	case "delete":
 		res, err = svc.DeleteBlock(a)
 	case "prop":

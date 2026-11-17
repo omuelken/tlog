@@ -78,6 +78,41 @@ func (s *Service) CutBlocks(rel, hash string, offsets []int) (*Result, string, e
 // so pasting into a fresh page or day does not leave a blank bullet above.
 // The result is the first block pasted.
 func (s *Service) PasteBlocks(a Addr, text string, before bool) (*Result, error) {
+	return s.paste(a, text, func(d *markdown.Document, at, ref, nb *markdown.Block, first bool) error {
+		switch {
+		case before:
+			return d.InsertBefore(at, nb)
+		case first:
+			return d.InsertAfter(at, nb)
+		default:
+			return d.InsertAfter(ref, nb)
+		}
+	})
+}
+
+// PasteChildren puts outline markdown into a file as the first blocks under
+// the block at the address, one level deeper than it: the row just below a
+// block whose children are shown. Otherwise it is PasteBlocks — anchors are
+// dropped the same way and the result is the first block pasted — except
+// that the block pasted into is never removed, since it now has children.
+func (s *Service) PasteChildren(a Addr, text string) (*Result, error) {
+	return s.paste(a, text, func(d *markdown.Document, at, ref, nb *markdown.Block, first bool) error {
+		switch {
+		case !first:
+			return d.InsertAfter(ref, nb)
+		case len(at.Children) > 0:
+			return d.InsertBefore(at.Children[0], nb)
+		default:
+			d.AppendChild(at, nb)
+			return nil
+		}
+	})
+}
+
+// paste parses text as an outline and places each top-level block of it with
+// put: at is the addressed block, ref the block placed last, first whether nb
+// is the first. A blank bullet left with nothing under it is removed.
+func (s *Service) paste(a Addr, text string, put func(d *markdown.Document, at, ref, nb *markdown.Block, first bool) error) (*Result, error) {
 	blocks := parseFragment(text)
 	if len(blocks) == 0 {
 		return nil, refuse("nothing to paste")
@@ -86,16 +121,7 @@ func (s *Service) PasteBlocks(a Addr, text string, before bool) (*Result, error)
 		dropTakenAnchors(d, blocks)
 		ref := at
 		for i, nb := range blocks {
-			var err error
-			switch {
-			case before:
-				err = d.InsertBefore(at, nb)
-			case i == 0:
-				err = d.InsertAfter(at, nb)
-			default:
-				err = d.InsertAfter(ref, nb)
-			}
-			if err != nil {
+			if err := put(d, at, ref, nb, i == 0); err != nil {
 				return nil, err
 			}
 			ref = nb
