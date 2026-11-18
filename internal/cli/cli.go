@@ -114,7 +114,11 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return exitOK
 	}
 
-	svc, err := app.New(dir)
+	open := app.New
+	if cmd == "config" {
+		open = app.Peek // reading or moving the settings creates no notes directory
+	}
+	svc, err := open(dir)
 	if err != nil {
 		fmt.Fprintf(stderr, "tlog: %v\n", err)
 		return exitError

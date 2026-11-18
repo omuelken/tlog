@@ -107,6 +107,20 @@ func Open(dir string) (*Store, error) {
 	return &Store{Root: abs}, nil
 }
 
+// Lookup is Open without creating anything: the store at dir whether or not
+// the directory is there. It is for reading the settings, which must not
+// make a notes directory at a place that is about to stop being the one.
+func Lookup(dir string) (*Store, error) {
+	if dir == "" {
+		dir = DefaultRoot()
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	return &Store{Root: abs}, nil
+}
+
 // Abs turns a store-relative path into an absolute one.
 func (s *Store) Abs(rel string) string { return filepath.Join(s.Root, rel) }
 

@@ -73,6 +73,26 @@ func New(root string) (*Service, error) {
 	return &Service{Store: s, Git: g, Cfg: cfg, CfgErr: cfgErr}, nil
 }
 
+// Peek is New for a look at the settings: when the notes directory does not
+// exist, it is not created and no repository is initialised. Changing where
+// the notes live used to leave an empty notes directory behind at the old
+// place, made by the very command that moved it. Settings kept in the notes
+// repository read as unset, and setting one is refused, until it exists.
+func Peek(root string) (*Service, error) {
+	cfg, cfgErr := config.Load()
+	if root == "" {
+		root = cfg.NotesDir()
+	}
+	if st, err := os.Stat(root); err == nil && st.IsDir() {
+		return New(root)
+	}
+	s, err := store.Lookup(root)
+	if err != nil {
+		return nil, err
+	}
+	return &Service{Store: s, Git: &store.Git{}, Cfg: cfg, CfgErr: cfgErr}, nil
+}
+
 // Reconfigure applies changed settings and writes them to the config file.
 // Everything that can take effect without a restart does.
 func (s *Service) Reconfigure(cfg config.Config) error {
