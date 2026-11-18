@@ -672,3 +672,29 @@ func TestHelpRunsNothing(t *testing.T) {
 		t.Fatalf("got %q", body)
 	}
 }
+
+// Reading or changing the settings creates no notes directory. Moving the
+// notes and then telling tlog where they went used to leave an empty
+// repository behind at the old place, made by that very command.
+func TestConfigCreatesNoNotesDirectory(t *testing.T) {
+	t.Setenv("TLOG_CONFIG", filepath.Join(t.TempDir(), "config.toml"))
+	gone := filepath.Join(t.TempDir(), "moved-away")
+	moved := filepath.Join(t.TempDir(), "notes")
+
+	if code, _, errs := runCLI(t, gone, "config"); code != 0 {
+		t.Fatalf("config: %d %s", code, errs)
+	}
+	if code, _, errs := runCLI(t, gone, "config", "notes", moved); code != 0 {
+		t.Fatalf("config notes: %d %s", code, errs)
+	}
+	if code, out, _ := runCLI(t, gone, "config", "notes"); code != 0 || strings.TrimSpace(out) != moved {
+		t.Fatalf("config notes reads %q", out)
+	}
+	if _, err := os.Stat(gone); !os.IsNotExist(err) {
+		t.Fatal("tlog config made a notes directory at the old place")
+	}
+	// A setting kept in the notes repository needs one to be there.
+	if code, _, _ := runCLI(t, gone, "config", "git.remote", "https://example.org/notes.git"); code == 0 {
+		t.Fatal("setting the remote of a notes directory that does not exist went through")
+	}
+}
