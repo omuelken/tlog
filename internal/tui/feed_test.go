@@ -106,7 +106,7 @@ func TestEnterStaysInTheSameDay(t *testing.T) {
 	typeText(t, m, "added")
 	send(t, m, k(tea.KeyEsc))
 
-	if got := fileOf(t, m, d1); got != "- last of the day\n\n- added\n" {
+	if got := fileOf(t, m, d1); got != "- last of the day\n- added\n" {
 		t.Fatalf("day 1: %q", got)
 	}
 	if got := fileOf(t, m, d2); got != "- other day\n" {

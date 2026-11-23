@@ -83,7 +83,7 @@ func TestMoveUpDownTakesSubtree(t *testing.T) {
 			t.Fatal("move up refused")
 		}
 	})
-	want := "- b\n  - b1\n\n- a\n\n- c\n"
+	want := "- b\n  - b1\n\n- a\n- c\n"
 	if got != want {
 		t.Fatalf("up: got %q want %q", got, want)
 	}
@@ -93,7 +93,7 @@ func TestMoveUpDownTakesSubtree(t *testing.T) {
 			t.Fatal("move down refused")
 		}
 	})
-	want = "- a\n\n- c\n\n- b\n  - b1\n"
+	want = "- a\n- c\n\n- b\n  - b1\n"
 	if got != want {
 		t.Fatalf("down: got %q want %q", got, want)
 	}
@@ -142,7 +142,7 @@ func TestAppendChildAtRoot(t *testing.T) {
 	got := edit(t, "- a\n", func(d *Document) {
 		d.AppendChild(nil, &Block{Text: "b"})
 	})
-	if got != "- a\n\n- b\n" {
+	if got != "- a\n- b\n" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -169,11 +169,11 @@ func TestEnsureAnchorIsLazyAndStable(t *testing.T) {
 }
 
 func TestEditingTextDoesNotDisturbNeighbours(t *testing.T) {
-	src := "- untouched one\n  with a continuation\n\n- target\n  status:: doing\n\n- untouched two\n  ```sh\n  echo hi\n  ```\n"
+	src := "- untouched one\n  with a continuation\n- target\n  status:: doing\n- untouched two\n  ```sh\n  echo hi\n  ```\n"
 	got := edit(t, src, func(d *Document) {
 		find(t, d, "target").Text = "target edited"
 	})
-	want := "- untouched one\n  with a continuation\n\n- target edited\n  status:: doing\n\n- untouched two\n  ```sh\n  echo hi\n  ```\n"
+	want := "- untouched one\n  with a continuation\n- target edited\n  status:: doing\n- untouched two\n  ```sh\n  echo hi\n  ```\n"
 	if got != want {
 		t.Fatalf("neighbours disturbed\ngot  %q\nwant %q", got, want)
 	}

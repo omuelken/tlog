@@ -33,7 +33,7 @@ func TestUndoAndRedoAStep(t *testing.T) {
 	if _, err := s.Redo(); err != nil {
 		t.Fatal(err)
 	}
-	if got := fileSays(t, s, rel); got != "- one\n\n- two\n" {
+	if got := fileSays(t, s, rel); got != "- one\n- two\n" {
 		t.Fatalf("after redo: %q", got)
 	}
 }

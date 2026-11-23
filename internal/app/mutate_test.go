@@ -17,7 +17,7 @@ func TestSplitBlockIsOneWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := body(t, s, rel); got != "- one\n\n- two\n" {
+	if got := body(t, s, rel); got != "- one\n- two\n" {
 		t.Fatalf("got %q", got)
 	}
 	// The result addresses the new block, so a caller can keep typing in it.

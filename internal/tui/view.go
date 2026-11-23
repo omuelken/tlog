@@ -219,17 +219,32 @@ func (m *Model) bodyLines() ([]string, int) {
 	return out, cursorLine
 }
 
-// gapBefore reports whether an empty line goes above row i: before each
-// top-level block that follows another block, the way format.blank_lines lays
-// the file out. A day's heading or a section already starts a group of its
-// own, so the first block under one gets no gap. The empty line belongs to no
-// row, so a click on it lands nowhere.
+// gapBefore reports whether an empty line goes above row i: before a
+// top-level block that follows another block, when either of the two has
+// children — the way format.blank_lines lays the file out (markdown.Gap). A
+// day's heading or a section already starts a group of its own, so the first
+// block under one gets no gap. The empty line belongs to no row, so a click
+// on it lands nowhere.
 func (m *Model) gapBefore(i int) bool {
 	if !m.svc.Cfg.Format.BlankLines || i == 0 {
 		return false
 	}
 	r, prev := m.rows[i], m.rows[i-1]
-	return r.kind == rowBlock && r.depth == 0 && (prev.kind == rowBlock || prev.kind == rowEmbed)
+	if r.kind != rowBlock || r.depth != 0 || (prev.kind != rowBlock && prev.kind != rowEmbed) {
+		return false
+	}
+	// The top-level block above: the nearest one, past its descendants and
+	// any embeds shown under them.
+	for j := i - 1; j >= 0; j-- {
+		p := m.rows[j]
+		if p.kind != rowBlock && p.kind != rowEmbed {
+			return false
+		}
+		if p.kind == rowBlock && p.depth == 0 {
+			return markdown.Gap(p.block, r.block)
+		}
+	}
+	return false
 }
 
 // wrapWidth is how many columns text starting at screen column textX may fill

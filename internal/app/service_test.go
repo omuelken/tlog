@@ -38,7 +38,7 @@ func TestAddCreatesAndAppends(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := body(t, s, rel)
-	if got != "- first thought\n\n- second thought\n" {
+	if got != "- first thought\n- second thought\n" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -306,14 +306,14 @@ func TestBlockOperationsRewriteTheFile(t *testing.T) {
 	if _, err := s.Outdent(addrOf(t, s, rel, 1)); err != nil {
 		t.Fatal(err)
 	}
-	if got := body(t, s, rel); got != "- parent\n\n- child\n" {
+	if got := body(t, s, rel); got != "- parent\n- child\n" {
 		t.Fatalf("outdent: %q", got)
 	}
 
 	if _, err := s.Move(addrOf(t, s, rel, 1), -1); err != nil {
 		t.Fatal(err)
 	}
-	if got := body(t, s, rel); got != "- child\n\n- parent\n" {
+	if got := body(t, s, rel); got != "- child\n- parent\n" {
 		t.Fatalf("move: %q", got)
 	}
 
@@ -344,7 +344,7 @@ func TestResultCarriesAUsableAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := body(t, s, rel); got != "- first\n\n- [ ] second, edited\n" {
+	if got := body(t, s, rel); got != "- first\n- [ ] second, edited\n" {
 		t.Fatalf("got %q", got)
 	}
 	if res2.Offset == 0 {
