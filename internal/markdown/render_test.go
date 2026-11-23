@@ -12,21 +12,23 @@ import (
 // source-preserving patcher.
 func TestRoundTripCanonical(t *testing.T) {
 	cases := map[string]string{
-		"flat":         "- one\n\n- two\n",
-		"nested":       "- one\n  - two\n    - three\n\n- four\n",
-		"multiline":    "- first\n  second\n  third\n",
-		"props":        "- task\n  status:: doing\n  due:: 2026-09-20\n",
-		"anchor":       "- named ^k3f9q2\n",
-		"task":         "- [ ] open\n\n- [x] done\n",
-		"fence":        "- code\n  ```go\n  x := 1\n  if x > 0 {\n  \tfmt.Println(x)\n  }\n  ```\n",
-		"front":        "---\ntitle: Foo\n---\n\n- body\n",
-		"mixed":        "---\ntitle: Foo\n---\n\n- a\n  cont\n  k:: v\n  - b ^abc123\n\n- c\n",
-		"empty-bullet": "-\n\n- x\n",
+		"flat": "- one\n- two\n",
+		// The blank line goes beside a block with children, on both sides.
+		"gap-around-tree": "- a\n\n- b\n  - b1\n\n- c\n- d\n",
+		"nested":          "- one\n  - two\n    - three\n\n- four\n",
+		"multiline":       "- first\n  second\n  third\n",
+		"props":           "- task\n  status:: doing\n  due:: 2026-09-20\n",
+		"anchor":          "- named ^k3f9q2\n",
+		"task":            "- [ ] open\n- [x] done\n",
+		"fence":           "- code\n  ```go\n  x := 1\n  if x > 0 {\n  \tfmt.Println(x)\n  }\n  ```\n",
+		"front":           "---\ntitle: Foo\n---\n\n- body\n",
+		"mixed":           "---\ntitle: Foo\n---\n\n- a\n  cont\n  k:: v\n  - b ^abc123\n\n- c\n",
+		"empty-bullet":    "-\n- x\n",
 		// A fence that opens on the bullet line itself must close at its
 		// marker, not run on and swallow the blocks after it.
-		"fence-on-bullet":        "- ```\n  a@b\n  ```\n\n- after\n",
+		"fence-on-bullet":        "- ```\n  a@b\n  ```\n- after\n",
 		"fence-on-nested-bullet": "- Bachelor\n  - ```sh\n    - not a bullet\n    ```\n  - sibling\n\n- Master\n",
-		"inline-triple-backtick": "- ```x``` inline\n\n- after\n",
+		"inline-triple-backtick": "- ```x``` inline\n- after\n",
 	}
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {

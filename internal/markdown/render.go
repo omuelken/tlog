@@ -8,9 +8,11 @@ import (
 const IndentUnit = "  "
 
 // blankLineBetweenTopLevel controls whether canonical output separates
-// top-level blocks with a blank line. It makes files easier to read and git
-// hunks easier to follow, and it is a setting rather than a constant because
-// it is a preference — see SetBlankLines.
+// top-level blocks with a blank line. The line goes only beside a block that
+// has children — a run of one-line blocks stays a tight list, and an outline
+// with sub-blocks stands apart from its neighbours (see Gap). It makes files
+// easier to read and git hunks easier to follow, and it is a setting rather
+// than a constant because it is a preference — see SetBlankLines.
 var blankLineBetweenTopLevel = true
 
 // SetBlankLines changes the canonical form. Each file is reformatted the next
@@ -36,7 +38,7 @@ func Render(d *Document) []byte {
 	}
 
 	for i, b := range d.Blocks {
-		if i > 0 && blankLineBetweenTopLevel {
+		if i > 0 && blankLineBetweenTopLevel && Gap(d.Blocks[i-1], b) {
 			sb.WriteByte('\n')
 		}
 		writeBlock(&sb, b, 0)
@@ -48,6 +50,13 @@ func Render(d *Document) []byte {
 		return nil
 	}
 	return []byte(out + "\n")
+}
+
+// Gap reports whether a blank line separates two adjacent top-level blocks:
+// it does when either of them has children. The outliner spaces the screen
+// with the same rule, so it lives here once.
+func Gap(prev, next *Block) bool {
+	return len(prev.Children) > 0 || len(next.Children) > 0
 }
 
 // RenderBlock renders a single block and its descendants at the given depth,

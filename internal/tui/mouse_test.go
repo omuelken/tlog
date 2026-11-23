@@ -81,22 +81,22 @@ func TestClickingAPageLinkGoesThere(t *testing.T) {
 }
 
 func TestClickingABlockPutsTheCaretThere(t *testing.T) {
-	m := treeModel(t, "- first block\n\n- second block\n")
+	m := treeModel(t, "- first block\n- second block\n")
 	send(t, m, k(tea.KeyEsc)) // moving: a click highlights, it does not write
 	m.View()
 
-	m.Update(clickAt(4, 3)) // "se|cond", below the gap
+	m.Update(clickAt(4, 2)) // "se|cond"
 	if m.cur != 1 || m.mode != modeMove || m.ed != nil {
 		t.Fatalf("a click while moving should only highlight: row %d mode %v", m.cur, m.mode)
 	}
 	m.View()
-	m.Update(clickAt(4, 3)) // the highlighted block again: write here
+	m.Update(clickAt(4, 2)) // the highlighted block again: write here
 	if m.mode != modeOutline || m.ed == nil || m.ed.cur != 2 {
 		t.Fatalf("a second click should start writing at the click: mode %v", m.mode)
 	}
 	typeText(t, m, "!")
 	send(t, m, k(tea.KeyEsc))
-	if got := onDisk(t, m); got != "- first block\n\n- se!cond block\n" {
+	if got := onDisk(t, m); got != "- first block\n- se!cond block\n" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -194,7 +194,7 @@ func TestDroppingAFileWhileMovingMakesABlock(t *testing.T) {
 	send(t, m, k(tea.KeyEsc))
 	send(t, m, paste(paths[0]))
 	got := onDisk(t, m)
-	if got != "- one\n\n- ![plan.png](../assets/plan.png)\n\n- two\n" {
+	if got != "- one\n- ![plan.png](../assets/plan.png)\n- two\n" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -265,7 +265,7 @@ func TestADropNobodyBracketedIsStillADrop(t *testing.T) {
 	// of runes; typed by hand it would have come one rune at a time.
 	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(paths[0])})
 	got := onDisk(t, m)
-	if got != "- one\n\n- ![plan.png](../assets/plan.png)\n\n- two\n" {
+	if got != "- one\n- ![plan.png](../assets/plan.png)\n- two\n" {
 		t.Fatalf("got %q", got)
 	}
 }

@@ -331,7 +331,7 @@ comments are replaced; values are not.
 | `git.remote` | where pushing goes — *kept in the notes repo* |
 | `watch.enabled` | pick up edits made in another editor |
 | `watch.interval` | how often the notes directory is checked |
-| `format.blank_lines` | a blank line between top-level blocks, in the files and on screen |
+| `format.blank_lines` | a blank line beside each top-level block that has children, in the files and on screen |
 | `deadline.property` | `Deadline` or `due`, whichever you prefer |
 | `dates.end_of_week` | what `eow` means: friday or sunday |
 

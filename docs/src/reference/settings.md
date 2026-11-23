@@ -28,7 +28,7 @@ there is. Your values are kept; comments you add by hand are not.
 | `git.remote` | where pushing goes ¹ |
 | `watch.enabled` | notice edits made in another editor. Takes effect at the next start. |
 | `watch.interval` | how often the notes folder is checked |
-| `format.blank_lines` | a blank line between top-level blocks in the files, and a gap above each one in the outliner ² |
+| `format.blank_lines` | a blank line around each top-level block that has children — one-line blocks stay a tight list — in the files and in the outliner ² |
 | `deadline.property` | whether a deadline is written as `Deadline::` or `due::` |
 | `dates.end_of_week` | what `eow` means: friday or sunday |
 | `outliner.terminal` | what opens a folder link in the outliner: empty for a new tab in this terminal, or a command with `{dir}` for the folder |

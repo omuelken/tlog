@@ -70,8 +70,8 @@ type Git struct {
 
 // Format is the canonical shape of a file tlog writes.
 type Format struct {
-	// BlankLines puts a blank line between top-level blocks. Changing it
-	// reformats each file the next time that file is written.
+	// BlankLines puts a blank line around top-level blocks with children.
+	// Changing it reformats each file the next time that file is written.
 	BlankLines bool `toml:"blank_lines"`
 }
 
@@ -292,7 +292,8 @@ func (c Config) render() string {
 	fmt.Fprintf(&b, "interval = %q\n\n", c.Watch.Interval)
 
 	b.WriteString(`[format]
-# A blank line between top-level blocks. Changing this reformats each file
+# A blank line around each top-level block that has children; blocks
+# without any stay a tight list. Changing this reformats each file
 # the next time that file is written — the content is untouched, but the
 # diff will be large.
 `)

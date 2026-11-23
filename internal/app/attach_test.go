@@ -164,7 +164,7 @@ func TestMigrateShelfBringsLinkedFilesIntoTheNotes(t *testing.T) {
 
 	text := "- [Antrag](" + fileURL(pdf) + ") und ![plan.png](" + fileURL(png) + ")\n" +
 		"  - nochmal [Antrag](" + fileURL(pdf) + ")\n\n" +
-		"- bare " + fileURL(png) + " and [mine](" + fileURL(elsewhere) + ")\n\n" +
+		"- bare " + fileURL(png) + " and [mine](" + fileURL(elsewhere) + ")\n" +
 		"- [gone](" + fileURL(filepath.Join(shelf, "gone.pdf")) + ") and [web](https://example.com)\n"
 	rel := "pages/Projekt.md"
 	if err := s.Store.Write(rel, []byte(text), ""); err != nil {
@@ -192,7 +192,7 @@ func TestMigrateShelfBringsLinkedFilesIntoTheNotes(t *testing.T) {
 	}
 	want := "- [Antrag](../assets/Projekt%20antrag.pdf) und ![plan.png](../assets/plan.png)\n" +
 		"  - nochmal [Antrag](../assets/Projekt%20antrag.pdf)\n\n" +
-		"- bare ![plan.png](../assets/plan.png) and [mine](" + fileURL(elsewhere) + ")\n\n" +
+		"- bare ![plan.png](../assets/plan.png) and [mine](" + fileURL(elsewhere) + ")\n" +
 		"- [gone](" + fileURL(filepath.Join(shelf, "gone.pdf")) + ") and [web](https://example.com)\n"
 	if got := body(t, s, rel); got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)

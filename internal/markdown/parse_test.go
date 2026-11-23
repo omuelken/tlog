@@ -291,7 +291,7 @@ func TestTaggedLinkSurvivesRoundTrip(t *testing.T) {
 }
 
 func TestQuoteIsOrdinaryBlockText(t *testing.T) {
-	src := "- > Dear all,\n  > the meeting is moved.\n\n- not a quote\n"
+	src := "- > Dear all,\n  > the meeting is moved.\n- not a quote\n"
 	doc := parseOne(t, src)
 
 	q := doc.Blocks[0]

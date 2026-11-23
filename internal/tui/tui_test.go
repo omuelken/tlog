@@ -109,7 +109,7 @@ func TestEnterStartsANewBlock(t *testing.T) {
 	typeText(t, m, "two")
 	send(t, m, k(tea.KeyEsc))
 
-	if got := onDisk(t, m); got != "- one\n\n- two\n" {
+	if got := onDisk(t, m); got != "- one\n- two\n" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -137,7 +137,7 @@ func TestEnterSplitsAtTheCursor(t *testing.T) {
 	}
 	send(t, m, k(tea.KeyEnter), k(tea.KeyEsc))
 
-	if got := onDisk(t, m); got != "- one\n\n- two\n" {
+	if got := onDisk(t, m); got != "- one\n- two\n" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -154,7 +154,7 @@ func TestTabIndentsAndShiftTabOutdents(t *testing.T) {
 	}
 
 	send(t, m, tea.KeyMsg{Type: tea.KeyShiftTab})
-	if got := onDisk(t, m); got != "- parent\n\n- child\n" {
+	if got := onDisk(t, m); got != "- parent\n- child\n" {
 		t.Fatalf("after outdent: %q", got)
 	}
 }
@@ -1602,7 +1602,7 @@ func TestMovingOffABlockKeepsWhatWasTyped(t *testing.T) {
 	m := treeModel(t, "- one\n\n- two\n")
 	typeText(t, m, "!")
 	send(t, m, k(tea.KeyDown))
-	if got := onDisk(t, m); got != "- one!\n\n- two\n" {
+	if got := onDisk(t, m); got != "- one!\n- two\n" {
 		t.Fatalf("got %q", got)
 	}
 	if m.edBlock != m.current() || m.ed.String() != "two" {
@@ -1639,7 +1639,7 @@ func TestBackspaceOnAnEmptyBlockRemovesIt(t *testing.T) {
 	m := treeModel(t, "- one\n\n- two\n")
 	send(t, m, k(tea.KeyEnter)) // a fresh empty block after "one"
 	send(t, m, k(tea.KeyBackspace))
-	if got := onDisk(t, m); got != "- one\n\n- two\n" {
+	if got := onDisk(t, m); got != "- one\n- two\n" {
 		t.Fatalf("got %q", got)
 	}
 	if m.cur != 0 || m.ed.cur != len("one") {
@@ -1882,7 +1882,7 @@ func TestEscSavesAndLettersThenMoveRatherThanType(t *testing.T) {
 	m := treeModel(t, "- one\n\n- two\n\n- three\n")
 	typeText(t, m, "!")
 	send(t, m, k(tea.KeyEsc))
-	if got := onDisk(t, m); got != "- one!\n\n- two\n\n- three\n" {
+	if got := onDisk(t, m); got != "- one!\n- two\n- three\n" {
 		t.Fatalf("esc did not save: %q", got)
 	}
 
@@ -1890,18 +1890,18 @@ func TestEscSavesAndLettersThenMoveRatherThanType(t *testing.T) {
 	if m.cur != 1 {
 		t.Fatalf("j j k should land on the second block, on row %d", m.cur)
 	}
-	if got := onDisk(t, m); got != "- one!\n\n- two\n\n- three\n" {
+	if got := onDisk(t, m); got != "- one!\n- two\n- three\n" {
 		t.Fatalf("moving typed into the file: %q", got)
 	}
 
 	send(t, m, runeKey('x'))
-	if got := onDisk(t, m); got != "- one!\n\n- [ ] two\n\n- three\n" {
+	if got := onDisk(t, m); got != "- one!\n- [ ] two\n- three\n" {
 		t.Fatalf("x did not make a task of the highlighted block: %q", got)
 	}
 
 	// Typed quickly, both d's can arrive as one key.
 	send(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("dd")})
-	if got := onDisk(t, m); got != "- one!\n\n- three\n" {
+	if got := onDisk(t, m); got != "- one!\n- three\n" {
 		t.Fatalf("dd did not delete it: %q", got)
 	}
 
@@ -2144,7 +2144,7 @@ func TestUndoAnEditToABlockLeftBehind(t *testing.T) {
 	m := treeModel(t, "- one\n\n- two\n")
 	typeText(t, m, " more")
 	send(t, m, k(tea.KeyDown)) // leaving the block writes it
-	if got := onDisk(t, m); got != "- one more\n\n- two\n" {
+	if got := onDisk(t, m); got != "- one more\n- two\n" {
 		t.Fatalf("got %q", got)
 	}
 	send(t, m, k(tea.KeyCtrlZ)) // nothing typed in "two", so the file goes back
@@ -2155,7 +2155,7 @@ func TestUndoAnEditToABlockLeftBehind(t *testing.T) {
 		t.Fatalf("nothing was said: %q", m.status)
 	}
 	send(t, m, k(tea.KeyCtrlY))
-	if got := onDisk(t, m); got != "- one more\n\n- two\n" {
+	if got := onDisk(t, m); got != "- one more\n- two\n" {
 		t.Fatalf("after redo: %q", got)
 	}
 }
@@ -2170,7 +2170,7 @@ func TestUndoAfterTabOrEnterKeepsTheTyping(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 	send(t, m, k(tea.KeyCtrlZ)) // the indent, not the word
-	if got := onDisk(t, m); got != "- parent\n\n- child\n" {
+	if got := onDisk(t, m); got != "- parent\n- child\n" {
 		t.Fatalf("after undoing the indent: %q", got)
 	}
 	send(t, m, k(tea.KeyCtrlZ)) // the word "child"
