@@ -143,6 +143,9 @@ type Model struct {
 	reg  register
 	vsel *visual
 	tsel *textSel
+	// drag is where a press of the left button landed on a block's text,
+	// until it is let go: moving with it held selects text from there.
+	drag *dragStart
 
 	// helpTop is how far the help screen is scrolled.
 	helpTop int
@@ -515,7 +518,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Anything laid over the page may change files — the agenda ticks tasks
 	// off, a command deletes blocks — so the block being typed is written
 	// before it opens, and the editor is put back on the cursor when it closes.
-	if beforeMode == modeOutline && m.mode != modeOutline {
+	// Selecting text is still inside the block, so the editor stays on it.
+	if beforeMode == modeOutline && m.mode != modeOutline && m.mode != modeText {
 		m.leave()
 	}
 	// Back from selecting text to moving: what was cut from the block is

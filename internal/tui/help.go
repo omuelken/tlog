@@ -110,9 +110,10 @@ func (m *Model) helpParts() []helpPart {
 
 		heading("The mouse"),
 		key("click", "a block to write there, a link to open it, ▸ ▾ to fold, ☐ to tick"),
+		key("drag", "across a block's text to select it; letting go copies it, d cuts it, c writes over it"),
 		key("right-click", "a link, to copy where it points"),
 		key("wheel", "move through the page"),
-		key("shift+drag", "select text, as in any program that uses the mouse"),
+		key("shift+drag", "the terminal's own selection, across blocks and as drawn (option+drag in iTerm2)"),
 
 		heading("Commands"),
 		para("Type / in a block for the commands that change it: /todo, /deadline, /date, /quote, " +

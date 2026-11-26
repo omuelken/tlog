@@ -175,7 +175,7 @@ func (m *Model) footer() string {
 	case m.rowKind() != rowBlock:
 		return styleMuted.Render("enter open · ↑↓ move · these live on other pages and are not edited here")
 	case m.mode == modeMove:
-		return styleMuted.Render("enter write · j k move · V select · y copy · dd cut · p paste · : go to · / search · t today · J journals · b back · g follow · [ ] days · x task · dd delete · z fold · ? keys · q quit")
+		return styleMuted.Render("enter write · j k move · V select · yy copy · dd cut · p paste · : go to · / search · t today · J journals · b back · g follow · [ ] days · x task · dd delete · z fold · ? keys · q quit")
 	default:
 		// Typing needs no reminding; getting somewhere does.
 		return styleMuted.Render("esc to move around · ctrl+p go to · ctrl+f search · F1 keys")
