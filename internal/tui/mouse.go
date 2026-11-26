@@ -47,7 +47,12 @@ func (m *Model) mouse(msg tea.MouseMsg) {
 	if msg.Y < 1 || msg.Y > m.viewHeight() {
 		line = -1
 	}
+	if msg.Action == tea.MouseActionRelease {
+		m.endDrag()
+	}
 	switch {
+	case msg.Action == tea.MouseActionMotion && msg.Button == tea.MouseButtonLeft && m.drag != nil:
+		m.dragTo(line, msg.Y, msg.X)
 	case msg.Button == tea.MouseButtonWheelUp:
 		m.moveCursor(-3)
 	case msg.Button == tea.MouseButtonWheelDown:
@@ -55,6 +60,7 @@ func (m *Model) mouse(msg tea.MouseMsg) {
 	case msg.Action == tea.MouseActionMotion:
 		m.hover = m.hitAt(line, msg.X)
 	case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft:
+		m.drag = m.dragFrom(line, msg.X)
 		m.click(line, msg.X)
 	case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonRight:
 		// The terminal's own selection is off while tlog has the mouse, and
